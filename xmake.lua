@@ -6,7 +6,7 @@ set_languages("cxx20")
 add_rules("mode.debug", "mode.release", "mode.profile")
 add_cxxflags("/utf-8")
 
-add_requires("fcl")
+add_requires("fcl master")
 add_requires("glad")
 add_requires("glfw")
 add_requires("glm")
