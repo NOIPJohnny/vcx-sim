@@ -1,5 +1,7 @@
 #include "RigidBodySystem.h"
 #include <fcl/narrowphase/collision.h>
+#include <fcl/geometry/shape/box.h>
+#include <fcl/geometry/shape/sphere.h>
 
 namespace VCX::Labs::RigidBody {
 
@@ -59,20 +61,25 @@ namespace VCX::Labs::RigidBody {
     }
 
     void RigidBodySystem::collisionDetectBoxBox_fcl(int id1, int id2) {
-        //modified the original code to adapt to my own RigidBodyItem
         RigidBodyItem const & b0 = _bodies[id1];
         RigidBodyItem const & b1 = _bodies[id2];
-        // Eigen::Vector3f RigidBody::dim - size of a box
         using CollisionGeometryPtr_t = std::shared_ptr<fcl::CollisionGeometry<float>>;
-        CollisionGeometryPtr_t box_geometry_A(new fcl::Box<float>(b0.dim[0], b0.dim[1], b0.dim[2]));
-        CollisionGeometryPtr_t box_geometry_B(new fcl::Box<float>(b1.dim[0], b1.dim[1], b1.dim[2]));
-        // Eigen::Vector3f RigidBody::x - position of a box, Eigen::Quaternionf RigidBody::q - rotation of a box
-        fcl::CollisionObject<float> box_A(box_geometry_A, fcl::Transform3f(Eigen::Translation3f(b0.position)*b0.orientation));
-        fcl::CollisionObject<float> box_B(box_geometry_B, fcl::Transform3f(Eigen::Translation3f(b1.position)*b1.orientation));
+        CollisionGeometryPtr_t geom_A;
+        if (b0.GetType() == RigidBodyType::Box)
+            geom_A = std::make_shared<fcl::Box<float>>(b0.GetDim()[0], b0.GetDim()[1], b0.GetDim()[2]);
+        else
+            geom_A = std::make_shared<fcl::Sphere<float>>(b0.radius); 
+        CollisionGeometryPtr_t geom_B;
+        if (b1.GetType() == RigidBodyType::Box)
+            geom_B = std::make_shared<fcl::Box<float>>(b1.GetDim()[0], b1.GetDim()[1], b1.GetDim()[2]);
+        else
+            geom_B = std::make_shared<fcl::Sphere<float>>(b1.radius);
+        fcl::CollisionObject<float> obj_A(geom_A, fcl::Transform3f(Eigen::Translation3f(b0.GetPosition()) * b0.GetOrient()));
+        fcl::CollisionObject<float> obj_B(geom_B, fcl::Transform3f(Eigen::Translation3f(b1.GetPosition()) * b1.GetOrient()));
         // Compute collision - at most 8 contacts and return contact information.
         fcl::CollisionRequest<float> collisionRequest(8, true);
         fcl::CollisionResult<float> collisionResult;
-        fcl::collide(&box_A, &box_B, collisionRequest, collisionResult);
+        fcl::collide(&obj_A, &obj_B, collisionRequest, collisionResult);
         if(! collisionResult.isCollision()) return;
         std::vector<fcl::Contact<float>> contacts;
         collisionResult.getContacts(contacts);

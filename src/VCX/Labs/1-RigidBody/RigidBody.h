@@ -7,12 +7,18 @@ namespace VCX::Labs::RigidBody {
 
     class RigidBodySystem;
 
+    enum class RigidBodyType {
+        Box,
+        Sphere
+    };
+
     class RigidBodyItem {
     public:
 
         friend class RigidBodySystem;
         
         RigidBodyItem(
+            RigidBodyType type,
             const Eigen::Vector3f& dim,
             float mass,
             const Eigen::Vector3f& position = Eigen::Vector3f::Zero(),
@@ -21,7 +27,19 @@ namespace VCX::Labs::RigidBody {
             const Eigen::Vector3f& w = Eigen::Vector3f::Zero()
         );
 
+        RigidBodyItem(
+            RigidBodyType type,
+            float radius,
+            float mass,
+            const Eigen::Vector3f& position = Eigen::Vector3f::Zero(),
+            const Eigen::Quaternionf& orientation = Eigen::Quaternionf::Identity(),
+            const Eigen::Vector3f& v = Eigen::Vector3f::Zero(),
+            const Eigen::Vector3f& w = Eigen::Vector3f::Zero()
+        );
+
+        const RigidBodyType GetType() const { return type; }
         const Eigen::Vector3f& GetDim() const { return dim; }
+        const float GetRadius() const { return radius; }
         const float GetMass() const { return mass; }
         const float GetInvMass() const { return mass_inv; }
         const Eigen::Vector3f& GetPosition() const { return position; }
@@ -41,7 +59,9 @@ namespace VCX::Labs::RigidBody {
 
 
     private:
+        RigidBodyType      type;
         Eigen::Vector3f    dim;  // length, width, height
+        float              radius; // for sphere
         float              mass;
         float              mass_inv;
         Eigen::Matrix3f    I_0;      // inertia tensor

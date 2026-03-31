@@ -6,6 +6,7 @@
 #include "Engine/GL/Frame.hpp"
 #include "Engine/GL/Program.h"
 #include "Engine/GL/RenderItem.h"
+#include "Engine/Sphere.h"
 #include "RigidBodySystem.h"
 #include "RigidBody.h"
 #include "Contact.h"
@@ -31,6 +32,7 @@ namespace VCX::Labs::RigidBody {
         Engine::Camera                      _camera { .Eye = glm::vec3(-5, 5, 5) };
         VCX::Labs::Common::OrbitCameraManager _cameraManager;
         Engine::GL::UniqueIndexedRenderItem _boxItem;
+        Engine::GL::UniqueIndexedRenderItem _sphereItem;
         Engine::GL::UniqueIndexedRenderItem _lineItem;
 
         bool _stopped { true };
@@ -45,6 +47,7 @@ namespace VCX::Labs::RigidBody {
         void SetupSceneTwoBodies();
         void SetupSceneComplex();
         void SetupSceneNewtonPendulum();
+        void SetupSceneSphere();
 
         // Interaction state
         int             _draggedBodyId { -1 };

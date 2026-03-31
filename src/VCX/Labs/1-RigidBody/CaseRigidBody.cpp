@@ -17,6 +17,7 @@ namespace VCX::Labs::RigidBody {
             Engine::GL::UniqueProgram({ Engine::GL::SharedShader("assets/shaders/flat.vert"),
                                         Engine::GL::SharedShader("assets/shaders/flat.frag") })),
         _boxItem(Engine::GL::VertexLayout().Add<glm::vec3>("position", Engine::GL::DrawFrequency::Stream, 0), Engine::GL::PrimitiveType::Triangles),
+        _sphereItem(Engine::GL::VertexLayout().Add<glm::vec3>("position", Engine::GL::DrawFrequency::Stream, 0), Engine::GL::PrimitiveType::Triangles),
         _lineItem(Engine::GL::VertexLayout().Add<glm::vec3>("position", Engine::GL::DrawFrequency::Stream, 0), Engine::GL::PrimitiveType::Lines) 
     {
         const std::vector<std::uint32_t> line_index = { 0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 7, 7, 4, 0, 4, 1, 5, 2, 6, 3, 7 };
@@ -24,6 +25,9 @@ namespace VCX::Labs::RigidBody {
 
         const std::vector<std::uint32_t> tri_index = { 0, 1, 2, 0, 2, 3, 1, 0, 4, 1, 4, 5, 1, 5, 6, 1, 6, 2, 2, 7, 3, 2, 6, 7, 0, 3, 7, 0, 7, 4, 4, 6, 5, 4, 7, 6 };
         _boxItem.UpdateElementBuffer(tri_index);
+
+        Engine::Sphere sphereTemplate(20, 1.0f);
+        _sphereItem.UpdateElementBuffer(sphereTemplate.GetIndices());
 
         _cameraManager.AutoRotate = false;
         _cameraManager.Save(_camera);
@@ -43,6 +47,7 @@ namespace VCX::Labs::RigidBody {
             case 1: SetupSceneTwoBodies(); break;
             case 2: SetupSceneComplex(); break;
             case 3: SetupSceneNewtonPendulum(); break;
+            case 4 : SetupSceneSphere(); break;
         }
         
         if (_gravityEnabled) {
@@ -53,7 +58,8 @@ namespace VCX::Labs::RigidBody {
     }
 
     void CaseRigidBody::SetupSceneSingle() {
-        RigidBodyItem body(Eigen::Vector3f(1.f, 2.f, 3.f), 10.0f, 
+        RigidBodyItem body(RigidBodyType::Box,
+                           Eigen::Vector3f(1.f, 2.f, 3.f), 10.0f, 
                            Eigen::Vector3f(0.f, 0.f, 0.f), Eigen::Quaternionf::Identity(),
                            Eigen::Vector3f(0.f, 0.f, 0.f), Eigen::Vector3f(0.f, 1.f, 0.f));
         _rigidBodySystem.AddBody(body);
@@ -61,11 +67,14 @@ namespace VCX::Labs::RigidBody {
     }
 
     void CaseRigidBody::SetupSceneTwoBodies() {
-        RigidBodyItem b1(Eigen::Vector3f(1.f, 1.f, 1.f), 1.0f, 
+        RigidBodyItem b1(
+                         RigidBodyType::Box,
+                         Eigen::Vector3f(1.f, 1.f, 1.f), 1.0f, 
                          Eigen::Vector3f(-3.f, 0.f, 0.f), Eigen::Quaternionf::Identity(),
                          Eigen::Vector3f(2.f, 0.f, 0.f), Eigen::Vector3f(0.5f, 0.5f, 0.f));
                          
-        RigidBodyItem b2(Eigen::Vector3f(1.f, 1.f, 1.f), 1.0f, 
+        RigidBodyItem b2(RigidBodyType::Box,
+                         Eigen::Vector3f(1.f, 1.f, 1.f), 1.0f, 
                          Eigen::Vector3f(3.f, 0.f, 0.f), Eigen::Quaternionf::Identity(),
                          Eigen::Vector3f(-2.f, 0.f, 0.f), Eigen::Vector3f(0.f, -0.5f, 0.5f));
                          
@@ -75,12 +84,14 @@ namespace VCX::Labs::RigidBody {
     }
 
     void CaseRigidBody::SetupSceneComplex() {
-        RigidBodyItem floor(Eigen::Vector3f(10.f, 0.5f, 10.f), 0, 
+        RigidBodyItem floor(RigidBodyType::Box,
+                            Eigen::Vector3f(10.f, 0.5f, 10.f), 0, 
                             Eigen::Vector3f(0.f, -2.f, 0.f));
         _rigidBodySystem.AddBody(floor);
 
         for (int i = 0; i < 4; ++i) {
-            RigidBodyItem box(Eigen::Vector3f(1.f, 1.f, 1.f), 1.0f, 
+            RigidBodyItem box(RigidBodyType::Box,
+                              Eigen::Vector3f(1.f, 1.f, 1.f), 1.0f, 
                               Eigen::Vector3f(0.f, 2.f + i * 2.1f, 0.1f * i));
             _rigidBodySystem.AddBody(box);
         }
@@ -88,7 +99,8 @@ namespace VCX::Labs::RigidBody {
     }
 
     void CaseRigidBody::SetupSceneNewtonPendulum() {
-        RigidBodyItem floor(Eigen::Vector3f(20.f, 0.5f, 5.f), 0, 
+        RigidBodyItem floor(RigidBodyType::Box,
+                            Eigen::Vector3f(20.f, 0.5f, 5.f), 0, 
                             Eigen::Vector3f(0.f, -1.f, 0.f));
         _rigidBodySystem.AddBody(floor);
 
@@ -98,20 +110,36 @@ namespace VCX::Labs::RigidBody {
             Eigen::Vector3f pos;
             if (i == 0) {
                 pos = Eigen::Vector3f(-4.0f, -1.f + 0.25f + boxSize / 2.0f, 0.f);
-                RigidBodyItem box(Eigen::Vector3f(boxSize, boxSize, boxSize), 1.0f, pos, 
+                RigidBodyItem box(RigidBodyType::Box, Eigen::Vector3f(boxSize, boxSize, boxSize), 1.0f, pos, 
                                   Eigen::Quaternionf::Identity(), Eigen::Vector3f(5.f, 0.f, 0.f));
                 _rigidBodySystem.AddBody(box);
             } else {
                 pos = Eigen::Vector3f(i * (boxSize + 0.01f), -1.f + 0.25f + boxSize / 2.0f, 0.f);
-                RigidBodyItem box(Eigen::Vector3f(boxSize, boxSize, boxSize), 1.0f, pos);
+                RigidBodyItem box(RigidBodyType::Box, Eigen::Vector3f(boxSize, boxSize, boxSize), 1.0f, pos, 
+                                  Eigen::Quaternionf::Identity(), Eigen::Vector3f(0.f, 0.f, 0.f));
                 _rigidBodySystem.AddBody(box);
             }
         }
         _gravityEnabled = true;
     }
 
+    void CaseRigidBody::SetupSceneSphere() {
+        RigidBodyItem sphere(RigidBodyType::Sphere,
+                             1.0f, 1.0f, 
+                             Eigen::Vector3f(0.f, 5.f, 0.f), Eigen::Quaternionf::Identity(),
+                             Eigen::Vector3f(0.f, -1.0f, 0.f));
+                         
+        RigidBodyItem box(RigidBodyType::Box,
+                         Eigen::Vector3f(1.f, 1.f, 1.f), 1.0f, 
+                         Eigen::Vector3f(0.f, 0.f, 0.f), Eigen::Quaternionf::Identity(),
+                         Eigen::Vector3f(0.f, 1.f, 0.f), Eigen::Vector3f(1.f, 0.f, 0.f));
+        _rigidBodySystem.AddBody(sphere);
+        _rigidBodySystem.AddBody(box);
+        _gravityEnabled = false;
+    }
+
     void CaseRigidBody::OnSetupPropsUI() {
-        if (ImGui::Combo("Scene", &_sceneId, "Single Body\0Two Bodies Collision\0Complex Gravity Scene\0Newton Pendulum\0"))
+        if (ImGui::Combo("Scene", &_sceneId, "Single Body\0Two Bodies Collision\0Complex Gravity Scene\0Newton Pendulum\0Sphere Body\0"))
             ResetSystem();
         if (ImGui::Button("Reset System")) ResetSystem();
         ImGui::SameLine();
@@ -160,45 +188,63 @@ namespace VCX::Labs::RigidBody {
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_LINE_SMOOTH);
 
+        static auto sphereTemplate = Engine::Sphere(20, 1.0f);
+        static auto sphereLocalVerts = sphereTemplate.GetVertices();
+
         auto const& bodies = _rigidBodySystem.GetBodies();
         for (size_t i = 0; i < bodies.size(); ++i) {
             auto const& body = bodies[i];
             
-            Eigen::Vector3f center = body.GetPosition();
-            Eigen::Quaternionf q = body.GetOrient();
-            Eigen::Vector3f dim = body.GetDim() / 2.0f; // Half lengths
-
-            std::vector<glm::vec3> VertsPosition;
-            VertsPosition.resize(8);
-
-            Eigen::Vector3f hX(dim[0], 0, 0);
-            Eigen::Vector3f hY(0, dim[1], 0);
-            Eigen::Vector3f hZ(0, 0, dim[2]);
-
-            Eigen::Vector3f corners[8] = {
-                -hX + hY + hZ,  hX + hY + hZ,
-                 hX + hY - hZ, -hX + hY - hZ,
-                -hX - hY + hZ,  hX - hY + hZ,
-                 hX - hY - hZ, -hX - hY - hZ
-            };
-
-            for (int k = 0; k < 8; ++k) {
-                Eigen::Vector3f worldPos = center + q * corners[k];
-                VertsPosition[k] = glm::vec3(worldPos.x(), worldPos.y(), worldPos.z());
-            }
-
-            auto span_bytes = Engine::make_span_bytes<glm::vec3>(VertsPosition);
-
             glm::vec3 Color = glm::vec3(121.0f, 207.0f, 171.0f) / 255.0f;
             if (i > 0) Color = glm::vec3(207.0f, 140.0f, 120.0f) / 255.0f;
-            
             _program.GetUniforms().SetByName("u_Color", Color);
-            _boxItem.UpdateVertexBuffer("position", span_bytes);
-            _boxItem.Draw({ _program.Use() });
 
-            _program.GetUniforms().SetByName("u_Color", glm::vec3(1.f, 1.f, 1.f));
-            _lineItem.UpdateVertexBuffer("position", span_bytes);
-            _lineItem.Draw({ _program.Use() });
+            if (body.GetType() == RigidBodyType::Box) {
+                Eigen::Vector3f center = body.GetPosition();
+                Eigen::Quaternionf q = body.GetOrient();
+                Eigen::Vector3f dim = body.GetDim() / 2.0f;
+
+                std::vector<glm::vec3> VertsPosition(8);
+                Eigen::Vector3f hX(dim[0], 0, 0);
+                Eigen::Vector3f hY(0, dim[1], 0);
+                Eigen::Vector3f hZ(0, 0, dim[2]);
+
+                Eigen::Vector3f corners[8] = {
+                    -hX + hY + hZ,  hX + hY + hZ,
+                     hX + hY - hZ, -hX + hY - hZ,
+                    -hX - hY + hZ,  hX - hY + hZ,
+                     hX - hY - hZ, -hX - hY - hZ
+                };
+
+                for (int k = 0; k < 8; ++k) {
+                    Eigen::Vector3f worldPos = center + q * corners[k];
+                    VertsPosition[k] = glm::vec3(worldPos.x(), worldPos.y(), worldPos.z());
+                }
+
+                auto span_bytes = Engine::make_span_bytes<glm::vec3>(VertsPosition);
+                _boxItem.UpdateVertexBuffer("position", span_bytes);
+                _boxItem.Draw({ _program.Use() });
+
+                _program.GetUniforms().SetByName("u_Color", glm::vec3(1.f, 1.f, 1.f));
+                _lineItem.UpdateVertexBuffer("position", span_bytes);
+                _lineItem.Draw({ _program.Use() });
+            } 
+            else if (body.GetType() == RigidBodyType::Sphere) {
+                Eigen::Vector3f center = body.GetPosition();
+                Eigen::Quaternionf q = body.GetOrient();
+                float radius = body.GetRadius();
+
+                std::vector<glm::vec3> VertsPosition(sphereLocalVerts.size());
+                for (size_t k = 0; k < sphereLocalVerts.size(); ++k) {
+                    Eigen::Vector3f localPos(sphereLocalVerts[k].x, sphereLocalVerts[k].y, sphereLocalVerts[k].z);
+                    Eigen::Vector3f worldPos = center + q * (localPos * radius);
+                    VertsPosition[k] = glm::vec3(worldPos.x(), worldPos.y(), worldPos.z());
+                }
+
+                auto span_bytes = Engine::make_span_bytes<glm::vec3>(VertsPosition);
+                _sphereItem.UpdateVertexBuffer("position", span_bytes);
+                _sphereItem.Draw({ _program.Use() });
+            }
         }
 
         glDisable(GL_LINE_SMOOTH);
