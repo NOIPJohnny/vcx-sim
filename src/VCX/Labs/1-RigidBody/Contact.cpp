@@ -57,14 +57,22 @@ namespace VCX::Labs::RigidBody {
             body2.vShift(-impulse * invM2);
             body2.wShift(-invI2 * r2.cross(impulse));
         }
+    }
+
+    void Contact::ResolvePosition(RigidBodySystem& system, RigidBodyItem& body1, RigidBodyItem& body2) {
+        float invM1 = body1.GetMass() > 0 ? body1.GetInvMass() : 0.0f;
+        float invM2 = body2.GetMass() > 0 ? body2.GetInvMass() : 0.0f;
+        if (invM1 == 0.0f && invM2 == 0.0f) return;
 
         const float percent = 0.2f;
         const float slop = 0.01f;
         
         if (Depth > slop) {
-            Eigen::Vector3f correction = std::max(Depth - slop, 0.0f) / (invM1 + invM2) * percent * n;
+            float actual_correction = std::max(Depth - slop, 0.0f) * percent;
+            Eigen::Vector3f correction = actual_correction / (invM1 + invM2) * n;
             if (invM1 > 0.0f) body1.PositionShift(invM1 * correction);
             if (invM2 > 0.0f) body2.PositionShift(-invM2 * correction);
+            Depth -= actual_correction;
         }
     }
 } // namespace VCX::Labs::RigidBody

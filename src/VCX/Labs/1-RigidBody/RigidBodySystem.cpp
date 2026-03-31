@@ -76,10 +76,21 @@ namespace VCX::Labs::RigidBody {
         if(! collisionResult.isCollision()) return;
         std::vector<fcl::Contact<float>> contacts;
         collisionResult.getContacts(contacts);
-        // You can decide whether define your own Contact
+        if (contacts.empty()) return;
+        Eigen::Vector3f avg_pos = Eigen::Vector3f::Zero();
+        Eigen::Vector3f avg_normal = Eigen::Vector3f::Zero();
+        float max_depth = 0.0f;
+        
         for(auto const & contact : contacts) {
-            _contacts.emplace_back(Contact(id1, id2, contact.pos, -contact.normal, contact.penetration_depth));
+            avg_pos += contact.pos;
+            avg_normal += -contact.normal;
+            max_depth = std::max(max_depth, contact.penetration_depth);
         }
+        
+        avg_pos /= contacts.size();
+        avg_normal.normalize();
+        
+        _contacts.emplace_back(Contact(id1, id2, avg_pos, avg_normal, max_depth));
     }
 
     void RigidBodySystem::ResolveCollisions() {
@@ -100,6 +111,12 @@ namespace VCX::Labs::RigidBody {
         for (int it = 0; it < iterations; ++it)
             for (Contact& contact : _contacts)
                 contact.Resolve(*this, _bodies[contact.id1], _bodies[contact.id2]);
+                
+        // Position solver (Pseudo-velocity / Projection)
+        int positionIterations = 5;
+        for (int it = 0; it < positionIterations; ++it)
+            for (Contact& contact : _contacts)
+                contact.ResolvePosition(*this, _bodies[contact.id1], _bodies[contact.id2]);
     }
 
     // enhance stability

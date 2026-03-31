@@ -14,6 +14,7 @@ namespace VCX::Labs::RigidBody {
             : id1(id1), id2(id2), p(p), n(n), Depth(depth) {}
 
         void Resolve(RigidBodySystem& system, RigidBodyItem& body1, RigidBodyItem& body2);
+        void ResolvePosition(RigidBodySystem& system, RigidBodyItem& body1, RigidBodyItem& body2);
     };
 
 } // namespace VCX::Labs::RigidBody

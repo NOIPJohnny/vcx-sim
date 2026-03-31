@@ -42,6 +42,7 @@ namespace VCX::Labs::RigidBody {
             case 0: SetupSceneSingle(); break;
             case 1: SetupSceneTwoBodies(); break;
             case 2: SetupSceneComplex(); break;
+            case 3: SetupSceneNewtonPendulum(); break;
         }
         
         if (_gravityEnabled) {
@@ -86,8 +87,31 @@ namespace VCX::Labs::RigidBody {
         _gravityEnabled = true;
     }
 
+    void CaseRigidBody::SetupSceneNewtonPendulum() {
+        RigidBodyItem floor(Eigen::Vector3f(20.f, 0.5f, 5.f), 0, 
+                            Eigen::Vector3f(0.f, -1.f, 0.f));
+        _rigidBodySystem.AddBody(floor);
+
+        int numBoxes = 5;
+        float boxSize = 1.0f;
+        for (int i = 0; i < numBoxes; ++i) {
+            Eigen::Vector3f pos;
+            if (i == 0) {
+                pos = Eigen::Vector3f(-4.0f, -1.f + 0.25f + boxSize / 2.0f, 0.f);
+                RigidBodyItem box(Eigen::Vector3f(boxSize, boxSize, boxSize), 1.0f, pos, 
+                                  Eigen::Quaternionf::Identity(), Eigen::Vector3f(5.f, 0.f, 0.f));
+                _rigidBodySystem.AddBody(box);
+            } else {
+                pos = Eigen::Vector3f(i * (boxSize + 0.01f), -1.f + 0.25f + boxSize / 2.0f, 0.f);
+                RigidBodyItem box(Eigen::Vector3f(boxSize, boxSize, boxSize), 1.0f, pos);
+                _rigidBodySystem.AddBody(box);
+            }
+        }
+        _gravityEnabled = true;
+    }
+
     void CaseRigidBody::OnSetupPropsUI() {
-        if (ImGui::Combo("Scene", &_sceneId, "Single Body\0Two Bodies Collision\0Complex Gravity Scene\0"))
+        if (ImGui::Combo("Scene", &_sceneId, "Single Body\0Two Bodies Collision\0Complex Gravity Scene\0Newton Pendulum\0"))
             ResetSystem();
         if (ImGui::Button("Reset System")) ResetSystem();
         ImGui::SameLine();
@@ -203,8 +227,6 @@ namespace VCX::Labs::RigidBody {
                 firstBody.ApplyForce(push_force); 
             }
         } 
-        else if (_sceneId == 1)
-            return;
         else if (_sceneId == 2) {
             if (!isMouseDown) {
                 _draggedBodyId = -1;
@@ -230,5 +252,6 @@ namespace VCX::Labs::RigidBody {
                 _dragTargetV = Eigen::Vector3f(mouseDelta.x * speedScale, mouseDelta.y * speedScale, mouseDelta.z * speedScale);
             }
         }
+        else return;
     }
 } // namespace VCX::Labs::RigidBody
