@@ -35,6 +35,8 @@ namespace VCX::Labs::RigidBody {
         _rigidBodySystem.Clear();
         _stopped = true;
         _gravityEnabled = false;
+        _draggedBodyId = -1;
+        _dragTargetV = Eigen::Vector3f::Zero();
 
         switch (_sceneId) {
             case 0: SetupSceneSingle(); break;
@@ -52,7 +54,7 @@ namespace VCX::Labs::RigidBody {
     void CaseRigidBody::SetupSceneSingle() {
         RigidBodyItem body(Eigen::Vector3f(1.f, 2.f, 3.f), 10.0f, 
                            Eigen::Vector3f(0.f, 0.f, 0.f), Eigen::Quaternionf::Identity(),
-                           Eigen::Vector3f(0.f, 0.f, 0.f), Eigen::Vector3f(0.f, 0.f, 0.f));
+                           Eigen::Vector3f(0.f, 0.f, 0.f), Eigen::Vector3f(0.f, 1.f, 0.f));
         _rigidBodySystem.AddBody(body);
         _gravityEnabled = false;
     }
@@ -85,19 +87,22 @@ namespace VCX::Labs::RigidBody {
     }
 
     void CaseRigidBody::OnSetupPropsUI() {
-        if (ImGui::CollapsingHeader("Algorithm", ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (ImGui::Combo("Scene", &_sceneId, "Single Body\0Two Bodies Collision\0Complex Gravity Scene\0"))
-                ResetSystem();
-            if (ImGui::Button("Reset System")) ResetSystem();
-            ImGui::SameLine();
-            if (ImGui::Button(_stopped ? "Start Simulation" : "Stop Simulation")) _stopped = ! _stopped;
-
-            if (ImGui::Checkbox("Enable Gravity", &_gravityEnabled)) {
-                if (_gravityEnabled) _rigidBodySystem.EnableGravity();
-                else _rigidBodySystem.DisableGravity();
-            }
-            ImGui::SliderInt("Substeps", &_substeps, 1, 20);
+        if (ImGui::Combo("Scene", &_sceneId, "Single Body\0Two Bodies Collision\0Complex Gravity Scene\0"))
+            ResetSystem();
+        if (ImGui::Button("Reset System")) ResetSystem();
+        ImGui::SameLine();
+        if (ImGui::Button(_stopped ? "Start Simulation" : "Stop Simulation")) _stopped = ! _stopped;
+        if (ImGui::Checkbox("Enable Gravity", &_gravityEnabled)) {
+            if (_gravityEnabled) _rigidBodySystem.EnableGravity();
+            else _rigidBodySystem.DisableGravity();
         }
+        ImGui::SliderInt("Substeps", &_substeps, 1, 20);
+        float restitution = _rigidBodySystem.GetRestitution();
+        float friction = _rigidBodySystem.GetFriction();
+        ImGui::SliderFloat("Restitution", &restitution, 0.01f, 1.f);
+        _rigidBodySystem.SetRestitution(restitution);
+        ImGui::SliderFloat("Friction", &friction, 0.01f, 1.f);
+        _rigidBodySystem.SetFriction(friction);
         ImGui::Spacing();
     }
 
@@ -109,6 +114,15 @@ namespace VCX::Labs::RigidBody {
             float dt = 1.0f / 60.0f; 
             float subdt = dt / static_cast<float>(_substeps);
             for(int i = 0; i < _substeps; ++i) {
+                if (_sceneId == 2 && _draggedBodyId != -1 && _draggedBodyId < _rigidBodySystem.GetBodies().size()) {
+                    auto& body = _rigidBodySystem.GetBodies()[_draggedBodyId];
+                    Eigen::Vector3f override_force = (_dragTargetV - body.Getv()) * body.GetMass() / subdt;
+                    if (_gravityEnabled && body.GetMass() > 0.0f) {
+                        override_force -= Eigen::Vector3f(0, -9.8f, 0) * body.GetMass();
+                    }
+                    body.ApplyForce(override_force); 
+                }
+
                 _rigidBodySystem.Update(subdt);
             }
         }
@@ -179,12 +193,42 @@ namespace VCX::Labs::RigidBody {
 
     void CaseRigidBody::OnProcessMouseControl(glm::vec3 mouseDelta) {
         if (_rigidBodySystem.GetBodies().empty()) return;
+        bool isMouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left);
 
-        float forceScale = 500.0f;
-        auto& firstBody = _rigidBodySystem.GetBodies()[0];
-        if (glm::length(mouseDelta) > 0.01f) {
-            Eigen::Vector3f push_force(mouseDelta.x * forceScale, mouseDelta.y * forceScale, mouseDelta.z * forceScale);
-            firstBody.ApplyForce(push_force); 
+        if (_sceneId == 0) {
+            float forceScale = 500.0f;
+            auto& firstBody = _rigidBodySystem.GetBodies()[0];
+            if (glm::length(mouseDelta) > 0.01f) {
+                Eigen::Vector3f push_force(mouseDelta.x * forceScale, mouseDelta.y * forceScale, mouseDelta.z * forceScale);
+                firstBody.ApplyForce(push_force); 
+            }
+        } 
+        else if (_sceneId == 1)
+            return;
+        else if (_sceneId == 2) {
+            if (!isMouseDown) {
+                _draggedBodyId = -1;
+                return;
+            }
+
+            auto& bodies = _rigidBodySystem.GetBodies();
+            
+            if (_draggedBodyId == -1) {
+                float minDist = std::numeric_limits<float>::max();
+                Eigen::Vector3f eye(_camera.Eye.x, _camera.Eye.y, _camera.Eye.z);
+                for (size_t i = 0; i < bodies.size(); ++i) {
+                    if (bodies[i].GetMass() <= 0) continue;
+                    float dist = (bodies[i].GetPosition() - eye).norm();
+                    if (dist < minDist) {
+                        minDist = dist;
+                        _draggedBodyId = i;
+                    }
+                }
+            }
+            if (_draggedBodyId != -1) {
+                float speedScale = 20.0f; 
+                _dragTargetV = Eigen::Vector3f(mouseDelta.x * speedScale, mouseDelta.y * speedScale, mouseDelta.z * speedScale);
+            }
         }
     }
 } // namespace VCX::Labs::RigidBody

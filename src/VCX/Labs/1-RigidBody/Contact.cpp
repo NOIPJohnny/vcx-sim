@@ -1,15 +1,16 @@
 #include "Contact.h"
+#include "RigidBodySystem.h"
 #include <algorithm>
 
 namespace VCX::Labs::RigidBody {
 
-    void Contact::Resolve(RigidBodyItem& body1, RigidBodyItem& body2) {
+    void Contact::Resolve(RigidBodySystem& system, RigidBodyItem& body1, RigidBodyItem& body2) {
         float invM1 = body1.GetMass() > 0 ? body1.GetInvMass() : 0.0f;
         float invM2 = body2.GetMass() > 0 ? body2.GetInvMass() : 0.0f;
         if (invM1 == 0.0f && invM2 == 0.0f) return;
 
-        float restitution = 0.5f; // c
-        float friction = 0.3f;  // μ
+        float restitution = system.GetRestitution(); // c
+        float friction = system.GetFriction();  // μ
 
         Eigen::Vector3f r1 = p - body1.GetPosition();
         Eigen::Vector3f r2 = p - body2.GetPosition();
@@ -20,6 +21,8 @@ namespace VCX::Labs::RigidBody {
 
         float vRelNormal = vRel.dot(n);
         if (vRelNormal >= 0) return;
+        float actualRestitution = (vRelNormal > -0.1f) ? 0.0f : restitution;
+
 
         Eigen::Matrix3f invI1 = body1.GetMass() > 0 ? body1.GetInvInertiaTensorWorld() : Eigen::Matrix3f::Zero();
         Eigen::Matrix3f invI2 = body2.GetMass() > 0 ? body2.GetInvInertiaTensorWorld() : Eigen::Matrix3f::Zero();
@@ -29,7 +32,7 @@ namespace VCX::Labs::RigidBody {
         float term2 = (invI1 * r1.cross(n)).cross(r1).dot(n);
         float term3 = (invI2 * r2.cross(n)).cross(r2).dot(n);
         float denominatorNormal = term1 + term2 + term3;
-        float Jn = -(1.0f + restitution) * vRelNormal / denominatorNormal;
+        float Jn = -(1.0f + actualRestitution) * vRelNormal / denominatorNormal;
         
         Eigen::Vector3f vRelTangent = vRel - vRelNormal * n;
         Eigen::Vector3f t = vRelTangent;

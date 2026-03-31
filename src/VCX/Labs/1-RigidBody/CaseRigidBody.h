@@ -44,5 +44,9 @@ namespace VCX::Labs::RigidBody {
         void SetupSceneSingle();
         void SetupSceneTwoBodies();
         void SetupSceneComplex();
+
+        // Interaction state
+        int             _draggedBodyId { -1 };
+        Eigen::Vector3f _dragTargetV { 0.f, 0.f, 0.f };
     };
 } // namespace VCX::Labs::RigidBody
