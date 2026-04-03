@@ -47,7 +47,9 @@ namespace VCX::Labs::RigidBody {
             case 1: SetupSceneTwoBodies(); break;
             case 2: SetupSceneComplex(); break;
             case 3: SetupSceneNewtonPendulum(); break;
-            case 4 : SetupSceneSphere(); break;
+            case 4: SetupSceneSphere(); break;
+            case 5: SetupSceneComplexSphere(); break;
+            default: break;
         }
         
         if (_gravityEnabled) {
@@ -138,8 +140,22 @@ namespace VCX::Labs::RigidBody {
         _gravityEnabled = false;
     }
 
+    void CaseRigidBody::SetupSceneComplexSphere() {
+        RigidBodyItem floor(RigidBodyType::Box,
+                            Eigen::Vector3f(10.f, 0.5f, 10.f), 0, 
+                            Eigen::Vector3f(0.f, -2.f, 0.f));
+        _rigidBodySystem.AddBody(floor);
+
+        for (int i = 0; i < 4; ++i) {
+            RigidBodyItem sphere(RigidBodyType::Sphere, 1.0f, 1.0f, 
+                                 Eigen::Vector3f(0.f, 2.f + i * 4.1f, 0.1f * i));
+            _rigidBodySystem.AddBody(sphere);
+        }
+        _gravityEnabled = true;
+    }
+
     void CaseRigidBody::OnSetupPropsUI() {
-        if (ImGui::Combo("Scene", &_sceneId, "Single Body\0Two Bodies Collision\0Complex Gravity Scene\0Newton Pendulum\0Sphere Body\0"))
+        if (ImGui::Combo("Scene", &_sceneId, "Single Body\0Two Bodies Collision\0Complex Gravity Scene\0Newton Pendulum\0Sphere Body\0Sphere Complex Scene\0"))
             ResetSystem();
         if (ImGui::Button("Reset System")) ResetSystem();
         ImGui::SameLine();

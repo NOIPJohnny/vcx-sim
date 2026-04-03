@@ -48,6 +48,7 @@ namespace VCX::Labs::RigidBody {
         void SetupSceneComplex();
         void SetupSceneNewtonPendulum();
         void SetupSceneSphere();
+        void SetupSceneComplexSphere();
 
         // Interaction state
         int             _draggedBodyId { -1 };
