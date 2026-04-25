@@ -10,3 +10,5 @@ vsxmake*
 docs/html
 docs/latex
 .vscode/
+
+.claude/
