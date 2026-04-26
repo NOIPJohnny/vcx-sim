@@ -10,6 +10,11 @@
 
 
 namespace VCX::Labs::Fluid {
+
+    constexpr int EMPTY_CELL = 0,
+                  FLUID_CELL = 1,
+                  SOLID_CELL = 2;
+    
     struct Simulator {
         std::vector<glm::vec3> m_particlePos; // Particle m_particlePos
         std::vector<glm::vec3> m_particleVel; // Particle Velocity
@@ -51,6 +56,7 @@ namespace VCX::Labs::Fluid {
 
         void        transferVelocities(bool toGrid, float flipRatio);
         void        solveIncompressibility(int numIters, float dt, float overRelaxation, bool compensateDrift);
+        void        solveIncompressibilityCG(float dt, bool compensateDrift, bool usePreconditioner);
         void        updateParticleColors();
         inline bool isValidVelocity(int i, int j, int k, int dir);
         inline int  index2GridOffset(glm::ivec3 index);

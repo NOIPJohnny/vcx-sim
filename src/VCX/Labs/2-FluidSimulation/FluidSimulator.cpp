@@ -6,10 +6,6 @@
 namespace VCX::Labs::Fluid {
 
     namespace {
-        constexpr int EMPTY_CELL = 0;
-        constexpr int FLUID_CELL = 1;
-        constexpr int SOLID_CELL = 2;
-
         inline int clampi(int x, int low, int hi) {return std::max(low, std::min(x, hi));}
 
         inline glm::vec3 staggeredOffset(int dir, float h) {
@@ -66,48 +62,47 @@ namespace VCX::Labs::Fluid {
             return stencil;
         }
     
-    inline Trilerp buildCellCenterStencil(glm::vec3 const & pos,
-                                      glm::vec3 const & gridMin,
-                                      float             invSpacing,
-                                      float             h,
-                                      int               cellX,
-                                      int               cellY,
-                                      int               cellZ) {
-        Trilerp stencil;
-        glm::vec3 relpos = (pos - gridMin - glm::vec3(0.5f * h)) * invSpacing;
+        inline Trilerp buildCellCenterStencil(glm::vec3 const & pos,
+                                        glm::vec3 const & gridMin,
+                                        float             invSpacing,
+                                        float             h,
+                                        int               cellX,
+                                        int               cellY,
+                                        int               cellZ) {
+            Trilerp stencil;
+            glm::vec3 relpos = (pos - gridMin - glm::vec3(0.5f * h)) * invSpacing;
 
-        int baseX = static_cast<int>(std::floor(relpos.x));
-        int baseY = static_cast<int>(std::floor(relpos.y));
-        int baseZ = static_cast<int>(std::floor(relpos.z));
+            int baseX = static_cast<int>(std::floor(relpos.x));
+            int baseY = static_cast<int>(std::floor(relpos.y));
+            int baseZ = static_cast<int>(std::floor(relpos.z));
 
-        float fx = relpos.x - baseX;
-        float fy = relpos.y - baseY;
-        float fz = relpos.z - baseZ;
+            float fx = relpos.x - baseX;
+            float fy = relpos.y - baseY;
+            float fz = relpos.z - baseZ;
 
-        for (int dx = 0; dx <= 1; ++dx) {
-            float wx = dx ? fx : (1.0f - fx);
-            int gx = baseX + dx;
-            if (gx < 0 || gx >= cellX) continue;
+            for (int dx = 0; dx <= 1; ++dx) {
+                float wx = dx ? fx : (1.0f - fx);
+                int gx = baseX + dx;
+                if (gx < 0 || gx >= cellX) continue;
 
-            for (int dy = 0; dy <= 1; ++dy) {
-                float wy = dy ? fy : (1.0f - fy);
-                int gy = baseY + dy;
-                if (gy < 0 || gy >= cellY) continue;
+                for (int dy = 0; dy <= 1; ++dy) {
+                    float wy = dy ? fy : (1.0f - fy);
+                    int gy = baseY + dy;
+                    if (gy < 0 || gy >= cellY) continue;
 
-                for (int dz = 0; dz <= 1; ++dz) {
-                    float wz = dz ? fz : (1.0f - fz);
-                    int gz = baseZ + dz;
-                    if (gz < 0 || gz >= cellZ) continue;
+                    for (int dz = 0; dz <= 1; ++dz) {
+                        float wz = dz ? fz : (1.0f - fz);
+                        int gz = baseZ + dz;
+                        if (gz < 0 || gz >= cellZ) continue;
 
-                    stencil.nodes[stencil.count] = glm::ivec3(gx, gy, gz);
-                    stencil.weights[stencil.count] = wx * wy * wz;
-                    stencil.count++;
+                        stencil.nodes[stencil.count] = glm::ivec3(gx, gy, gz);
+                        stencil.weights[stencil.count] = wx * wy * wz;
+                        stencil.count++;
+                    }
                 }
             }
+            return stencil;
         }
-        return stencil;
-    }
-
     } // anonymous namespace for helper functions
 
     void Simulator::integrateParticles(float timeStep) {
@@ -337,7 +332,6 @@ namespace VCX::Labs::Fluid {
 
         std::fill(m_p.begin(), m_p.end(), 0.0f);
 
-        const float pressureScale = m_h / dt;
         const float driftK = 1.0f;
         for (int iter = 0; iter < numIters; ++iter)
             for (int i = 1; i < m_iCellX - 1; ++i)
@@ -386,6 +380,163 @@ namespace VCX::Labs::Fluid {
                         m_vel[front].z  += sz1 * p;
                     }
     }
+
+    void Simulator::solveIncompressibilityCG(float dt, bool compensateDrift, bool usePreconditioner) {
+        if (dt <= 0.0f) return;
+
+        std::fill(m_p.begin(), m_p.end(), 0.0f);
+
+        const float driftK = 1.0f;
+
+        // build mapping
+        std::vector<int> cellToUnknown(m_iNumCells, -1);
+        std::vector<int> unknownToCell;
+        unknownToCell.reserve(m_iNumCells);
+
+        for (int idx = 0; idx < m_iNumCells; ++idx)
+            if (m_type[idx] == FLUID_CELL) {
+                cellToUnknown[idx] = static_cast<int>(unknownToCell.size());
+                unknownToCell.push_back(idx);
+            }
+
+        const int n = static_cast<int>(unknownToCell.size());
+        if (n == 0) return;
+
+        Eigen::SparseMatrix<float> A(n, n);
+        Eigen::VectorXf b(n);
+        Eigen::VectorXf x(n);
+        x.setZero();
+
+        std::vector<Eigen::Triplet<float>> triplets;
+        triplets.reserve(n * 7);
+
+        auto addNeighborContribution = [&](int row,
+                                        int neighborCell,
+                                        float sNeighbor,
+                                        float & diag) {
+            if (sNeighbor <= 0.0f) return;
+            diag += sNeighbor;
+            int col = cellToUnknown[neighborCell];
+            if (col >= 0)
+                triplets.emplace_back(row, col, -sNeighbor);
+        };
+
+        for (int row = 0; row < n; ++row) {
+            int center = unknownToCell[row];
+
+            int i = center / (m_iCellY * m_iCellZ);
+            int rem = center % (m_iCellY * m_iCellZ);
+            int j = rem / m_iCellZ;
+            int k = rem % m_iCellZ;
+
+            int left  = index2GridOffset(glm::ivec3(i - 1, j, k));
+            int right = index2GridOffset(glm::ivec3(i + 1, j, k));
+            int down  = index2GridOffset(glm::ivec3(i, j - 1, k));
+            int up    = index2GridOffset(glm::ivec3(i, j + 1, k));
+            int back  = index2GridOffset(glm::ivec3(i, j, k - 1));
+            int front = index2GridOffset(glm::ivec3(i, j, k + 1));
+
+            float sx0 = m_s[left];
+            float sx1 = m_s[right];
+            float sy0 = m_s[down];
+            float sy1 = m_s[up];
+            float sz0 = m_s[back];
+            float sz1 = m_s[front];
+
+            float diag = 0.0f;
+            addNeighborContribution(row, left,  sx0, diag);
+            addNeighborContribution(row, right, sx1, diag);
+            addNeighborContribution(row, down,  sy0, diag);
+            addNeighborContribution(row, up,    sy1, diag);
+            addNeighborContribution(row, back,  sz0, diag);
+            addNeighborContribution(row, front, sz1, diag);
+
+            triplets.emplace_back(row, row, diag);
+
+            float div =
+                m_vel[right].x - m_vel[center].x +
+                m_vel[up].y    - m_vel[center].y +
+                m_vel[front].z - m_vel[center].z;
+
+            if (compensateDrift && m_particleRestDensity > 0.0f) {
+                float compression = m_particleDensity[center] - m_particleRestDensity;
+                if (compression > 0.0f)
+                    div -= driftK * compression;
+            }
+
+            b[row] = -div;
+        }
+
+        A.setFromTriplets(triplets.begin(), triplets.end());
+
+        if (usePreconditioner) {
+            Eigen::ConjugateGradient<
+                Eigen::SparseMatrix<float>,
+                Eigen::Lower | Eigen::Upper,
+                Eigen::IncompleteCholesky<float>
+            > solver;
+
+            solver.setMaxIterations(std::max(20, n));
+            solver.setTolerance(1e-4f);
+            solver.compute(A);
+            if (solver.info() == Eigen::Success)
+                x = solver.solve(b);
+        }
+        else {
+            Eigen::ConjugateGradient<Eigen::SparseMatrix<float>, Eigen::Lower | Eigen::Upper> solver;
+
+            solver.setMaxIterations(std::max(20, n));
+            solver.setTolerance(1e-4f);
+            solver.compute(A);
+            if (solver.info() == Eigen::Success) {
+                x = solver.solve(b);
+            }
+        }
+
+        for (int row = 0; row < n; ++row)
+            m_p[unknownToCell[row]] = x[row];
+
+        for (int row = 0; row < n; ++row) {
+            int center = unknownToCell[row];
+
+            int i = center / (m_iCellY * m_iCellZ);
+            int rem = center % (m_iCellY * m_iCellZ);
+            int j = rem / m_iCellZ;
+            int k = rem % m_iCellZ;
+
+            int right = index2GridOffset(glm::ivec3(i + 1, j, k));
+            int up    = index2GridOffset(glm::ivec3(i, j + 1, k));
+            int front = index2GridOffset(glm::ivec3(i, j, k + 1));
+
+            if (m_s[right] > 0.0f)
+                m_vel[right].x -= m_p[right] - m_p[center];
+            if (m_s[up] > 0.0f)
+                m_vel[up].y -= m_p[up] - m_p[center];
+            if (m_s[front] > 0.0f)
+                m_vel[front].z -= m_p[front] - m_p[center];
+        }
+
+        for (int row = 0; row < n; ++row) {
+            int center = unknownToCell[row];
+
+            int i = center / (m_iCellY * m_iCellZ);
+            int rem = center % (m_iCellY * m_iCellZ);
+            int j = rem / m_iCellZ;
+            int k = rem % m_iCellZ;
+
+            int left  = index2GridOffset(glm::ivec3(i - 1, j, k));
+            int down  = index2GridOffset(glm::ivec3(i, j - 1, k));
+            int back  = index2GridOffset(glm::ivec3(i, j, k - 1));
+
+            if (m_s[left] > 0.0f && cellToUnknown[left] < 0)
+                m_vel[center].x -= m_p[center];   // p_left = 0
+            if (m_s[down] > 0.0f && cellToUnknown[down] < 0)
+                m_vel[center].y -= m_p[center];
+            if (m_s[back] > 0.0f && cellToUnknown[back] < 0)
+                m_vel[center].z -= m_p[center];
+        }
+    }
+
 
     void Simulator::updateParticleDensity() {
         const glm::vec3 gridMin(-0.5f, -0.5f, -0.5f);

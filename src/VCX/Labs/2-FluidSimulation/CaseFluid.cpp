@@ -82,7 +82,7 @@ namespace VCX::Labs::Fluid {
         ImGui::Spacing();
 
         ImGui::Checkbox("Use Fixed dt", &_useFixedDt);
-        ImGui::SliderFloat("Fixed dt", &_fixedDt, 1.0f / 240.0f, 1.0f / 20.0f, "%.5f");
+        ImGui::SliderFloat("Fixed dt", &_fixedDt, 1.0f / 240.0f, 1.0f / 100.0f, "%.5f");
         ImGui::SliderFloat("Time Scale", &_timeScale, 0.1f, 2.0f, "%.2f");
         ImGui::SliderFloat("flipRatio", &_sim.m_fRatio, 0.0f, 1.0f, "%.2f");
 
@@ -121,28 +121,30 @@ namespace VCX::Labs::Fluid {
             ImGui::SameLine();
             ImGui::RadioButton("PCG", &pm, static_cast<int>(PressureMode::PCG));
             _pressureMode = static_cast<PressureMode>(pm);
-            ImGui::TextUnformatted("CG/PCG currently uses GS fallback in Case layer.");
         }
 
-        ImGui::SeparatorText("B3");
+        ImGui::SeparatorText("B4");
         {
             int sm = static_cast<int>(_simMode);
             ImGui::RadioButton("FLIP", &sm, static_cast<int>(SimMode::FLIP));
             ImGui::SameLine();
-            ImGui::RadioButton("Eulerian (skeleton)", &sm, static_cast<int>(SimMode::Eulerian));
+            ImGui::RadioButton("APIC (skeleton)", &sm, static_cast<int>(SimMode::APIC));
             _simMode = static_cast<SimMode>(sm);
         }
+
+
     }
 
     void CaseFluid::SolvePressure(float dt) {
-        if (_pressureMode == PressureMode::GaussSeidel) {
+        if (_pressureMode == PressureMode::GaussSeidel)
             _sim.solveIncompressibility(_numPressureIters, dt, _overRelaxation, _compensateDrift);
-            return;
-        }
-
-        // B2 skeleton: CG/PCG hook
-        // TODO
-        _sim.solveIncompressibility(_numPressureIters, dt, _overRelaxation, _compensateDrift);
+    
+        else if (_pressureMode == PressureMode::CG)
+            _sim.solveIncompressibilityCG(dt, _compensateDrift, false);
+    
+        
+        else if (_pressureMode == PressureMode::PCG)
+            _sim.solveIncompressibilityCG(dt, _compensateDrift, true);
     }
 
     void CaseFluid::UpdateColorByMode() {
@@ -159,7 +161,7 @@ namespace VCX::Labs::Fluid {
             int count = 0;
 
             for (int idx = 0; idx < _sim.m_iNumCells; ++idx) {
-                if (_sim.m_type[idx] != 1)
+                if (_sim.m_type[idx] != FLUID_CELL)
                     continue;
 
                 float const p = _sim.m_p[idx];
@@ -243,14 +245,14 @@ namespace VCX::Labs::Fluid {
 
     Common::CaseRenderResult CaseFluid::OnRender(std::pair<std::uint32_t, std::uint32_t> const desiredSize) {
         float dt = _useFixedDt ? _fixedDt : Engine::GetDeltaTime() * _timeScale;
-        dt = std::clamp(dt, 1.0f / 300.0f, 1.0f / 15.0f);
+        dt = std::clamp(dt, 1.0f / 300.0f, 1.0f / 100.0f);
         _lastStepDt = dt;
 
         if (!_paused) {
             if (_simMode == SimMode::FLIP)
                 StepFlip(dt);
             else {
-                // B3 skeleton: EulerianSimulator::step(dt)
+                // B4 skeleton: APIC transfer
                 // TODO
                 StepFlip(dt);
             }

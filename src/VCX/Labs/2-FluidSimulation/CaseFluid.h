@@ -39,7 +39,7 @@ namespace VCX::Labs::Fluid {
 
         enum class SimMode : int {
             FLIP = 0,
-            Eulerian = 1,
+            APIC = 1,
         };
 
     private:
