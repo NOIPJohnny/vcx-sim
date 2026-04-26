@@ -19,6 +19,7 @@ namespace VCX::Labs::Fluid {
         std::vector<glm::vec3> m_particlePos; // Particle m_particlePos
         std::vector<glm::vec3> m_particleVel; // Particle Velocity
         std::vector<glm::vec3> m_particleColor;
+        std::vector<glm::mat3> m_particleC; // APIC affine matrix, only used in APIC mode
 
         float m_fRatio;
         int   m_iCellX;
@@ -55,6 +56,7 @@ namespace VCX::Labs::Fluid {
         void updateParticleDensity();
 
         void        transferVelocities(bool toGrid, float flipRatio);
+        void        transferVelocitiesAPIC(bool toGrid);
         void        solveIncompressibility(int numIters, float dt, float overRelaxation, bool compensateDrift);
         void        solveIncompressibilityCG(float dt, bool compensateDrift, bool usePreconditioner);
         void        updateParticleColors();
@@ -120,6 +122,8 @@ namespace VCX::Labs::Fluid {
             m_particleVel.resize(m_iNumSpheres, glm::vec3(0.0f));
             m_particleColor.clear();
             m_particleColor.resize(m_iNumSpheres, glm::vec3(1.0f));
+            m_particleC.clear();
+            m_particleC.resize(m_iNumSpheres, glm::mat3(0.0f));
             m_hashtable.clear();
             m_hashtable.resize(m_iNumSpheres, 0);
             m_hashtableindex.clear();

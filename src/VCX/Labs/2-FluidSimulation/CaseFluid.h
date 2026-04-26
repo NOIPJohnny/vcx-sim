@@ -45,6 +45,7 @@ namespace VCX::Labs::Fluid {
     private:
         void ResetSystem();
         void StepFlip(float dt);
+        void StepAPIC(float dt);
         void SolvePressure(float dt);
         void UpdateColorByMode();
         void UpdateObstacleFromInput(ImVec2 const & pos);

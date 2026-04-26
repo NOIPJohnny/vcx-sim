@@ -103,6 +103,120 @@ namespace VCX::Labs::Fluid {
             }
             return stencil;
         }
+
+        inline void resetGridData(std::vector<glm::vec3> & vel,
+                                  std::vector<float> nearNum[3]) {
+            std::fill(vel.begin(), vel.end(), glm::vec3(0.0f));
+            for (int dir = 0; dir < 3; ++dir)
+                std::fill(nearNum[dir].begin(), nearNum[dir].end(), 0.0f);
+        }
+
+        inline void rebuildCellTypes(std::vector<int> & type,
+                                     std::vector<float> const & solidMask,
+                                     std::vector<glm::vec3> const & particlePos,
+                                     glm::vec3 const & gridMin,
+                                     float invSpacing,
+                                     int cellX,
+                                     int cellY,
+                                     int cellZ,
+                                     int (*indexer)(glm::ivec3) = nullptr) = delete;
+
+        template<typename Indexer>
+        inline void rebuildCellTypes(std::vector<int> & type,
+                                     std::vector<float> const & solidMask,
+                                     std::vector<glm::vec3> const & particlePos,
+                                     glm::vec3 const & gridMin,
+                                     float invSpacing,
+                                     int cellX,
+                                     int cellY,
+                                     int cellZ,
+                                     Indexer indexer) {
+            for (std::size_t idx = 0; idx < type.size(); ++idx)
+                type[idx] = (solidMask[idx] == 0.0f) ? SOLID_CELL : EMPTY_CELL;
+
+            for (glm::vec3 const & pos : particlePos) {
+                glm::vec3 rel = (pos - gridMin) * invSpacing;
+
+                int i = clampi(static_cast<int>(std::floor(rel.x)), 0, cellX - 1);
+                int j = clampi(static_cast<int>(std::floor(rel.y)), 0, cellY - 1);
+                int k = clampi(static_cast<int>(std::floor(rel.z)), 0, cellZ - 1);
+
+                int idx = indexer(glm::ivec3(i, j, k));
+                if (type[idx] != SOLID_CELL)
+                    type[idx] = FLUID_CELL;
+            }
+        }
+
+        inline void normalizeGridVelocities(std::vector<glm::vec3> & vel,
+                                            std::vector<float> const nearNum[3],
+                                            std::vector<int> const & type) {
+            for (std::size_t idx = 0; idx < vel.size(); ++idx) {
+                for (int dir = 0; dir < 3; ++dir) {
+                    if (nearNum[dir][idx] > 1e-8f)
+                        vel[idx][dir] /= nearNum[dir][idx];
+                }
+
+                if (type[idx] == SOLID_CELL)
+                    vel[idx] = glm::vec3(0.0f);
+            }
+        }
+
+        template<typename Indexer>
+        inline void extrapolateVelocityField(std::vector<glm::vec3> & gridField,
+                                             std::vector<float> const nearNum[3],
+                                             std::vector<int> const & type,
+                                             int cellX,
+                                             int cellY,
+                                             int cellZ,
+                                             Indexer indexer) {
+            constexpr int numLayers = 3;
+            const glm::ivec3 neighborOffsets[6] = {
+                {1,0,0}, {-1,0,0}, {0,1,0}, {0,-1,0}, {0,0,1}, {0,0,-1}
+            };
+
+            for (int dir = 0; dir < 3; ++dir) {
+                std::vector<char> valid(type.size(), 0);
+                for (std::size_t idx = 0; idx < type.size(); ++idx)
+                    valid[idx] = (nearNum[dir][idx] > 1e-8f) ? 1 : 0;
+
+                for (int iter = 0; iter < numLayers; ++iter) {
+                    std::vector<char> nextValid = valid;
+                    std::vector<glm::vec3> nextField = gridField;
+
+                    for (int i = 0; i < cellX; ++i)
+                        for (int j = 0; j < cellY; ++j)
+                            for (int k = 0; k < cellZ; ++k) {
+                                int idx = indexer(glm::ivec3(i, j, k));
+
+                                if (valid[idx] || type[idx] == SOLID_CELL) continue;
+
+                                float sum = 0.0f;
+                                int count = 0;
+
+                                for (auto const& offset : neighborOffsets) {
+                                    glm::ivec3 n = glm::ivec3(i, j, k) + offset;
+                                    if (n.x >= 0 && n.x < cellX &&
+                                        n.y >= 0 && n.y < cellY &&
+                                        n.z >= 0 && n.z < cellZ) {
+                                        int nIdx = indexer(n);
+                                        if (valid[nIdx]) {
+                                            sum += gridField[nIdx][dir];
+                                            count++;
+                                        }
+                                    }
+                                }
+
+                                if (count > 0) {
+                                    nextField[idx][dir] = sum / static_cast<float>(count);
+                                    nextValid[idx] = 1;
+                                }
+                            }
+
+                    valid = std::move(nextValid);
+                    gridField = std::move(nextField);
+                }
+            }
+        }
     } // anonymous namespace for helper functions
 
     void Simulator::integrateParticles(float timeStep) {
@@ -172,31 +286,6 @@ namespace VCX::Labs::Fluid {
     void Simulator::transferVelocities(bool toGrid, float flipRatio) {
         const glm::vec3 gridMin(-0.5f, -0.5f, -0.5f);
 
-        auto resetGridData = [&]() {
-            std::fill(m_vel.begin(), m_vel.end(), glm::vec3(0.0f));
-            for (int dir = 0; dir < 3; ++dir)
-                std::fill(m_near_num[dir].begin(), m_near_num[dir].end(), 0.0f);
-        };
-
-        auto rebuildCellTypes = [&]() {
-            for (int idx = 0; idx < m_iNumCells; ++idx) {
-                m_type[idx] = (m_s[idx] == 0.0f) ? SOLID_CELL : EMPTY_CELL;
-            }
-
-            for (glm::vec3 const & pos : m_particlePos) {
-                glm::vec3 rel = (pos - gridMin) * m_fInvSpacing;
-
-                int i = clampi(static_cast<int>(std::floor(rel.x)), 0, m_iCellX - 1);
-                int j = clampi(static_cast<int>(std::floor(rel.y)), 0, m_iCellY - 1);
-                int k = clampi(static_cast<int>(std::floor(rel.z)), 0, m_iCellZ - 1);
-
-                int idx = index2GridOffset(glm::ivec3(i, j, k));
-                if (m_type[idx] != SOLID_CELL) {
-                    m_type[idx] = FLUID_CELL;
-                }
-            }
-        };
-
         auto accumulateParticleToGrid = [&](glm::vec3 const & pos, glm::vec3 const & vel) {
             for (int dir = 0; dir < 3; ++dir) {
                 Trilerp stencil = buildStencil(
@@ -210,17 +299,6 @@ namespace VCX::Labs::Fluid {
                     m_vel[idx][dir] += w * vel[dir];
                     m_near_num[dir][idx] += w;
                 }
-            }
-        };
-
-        auto normalizeGridVelocities = [&]() {
-            for (int idx = 0; idx < m_iNumCells; ++idx) {
-                for (int dir = 0; dir < 3; ++dir)
-                    if (m_near_num[dir][idx] > 1e-8f) 
-                        m_vel[idx][dir] /= m_near_num[dir][idx];
-
-                if (m_type[idx] == SOLID_CELL)
-                    m_vel[idx] = glm::vec3(0.0f);
             }
         };
 
@@ -253,68 +331,27 @@ namespace VCX::Labs::Fluid {
             return sampled;
         };
 
-        // solve the problem of "air" cells
-        auto extrapolateVelocityField = [&](std::vector<glm::vec3>& gridField) {
-            constexpr int numLayers = 3;
-            const glm::ivec3 neighborOffsets[6] = {
-                {1,0,0}, {-1,0,0}, {0,1,0}, {0,-1,0}, {0,0,1}, {0,0,-1}
-            };
-
-            for (int dir = 0; dir < 3; ++dir) {
-                std::vector<char> valid(m_iNumCells, 0);
-                for (int idx = 0; idx < m_iNumCells; ++idx)
-                    valid[idx] = (m_near_num[dir][idx] > 1e-8f) ? 1 : 0;
-
-                for (int iter = 0; iter < numLayers; ++iter) {
-                    std::vector<char> nextValid = valid;
-                    std::vector<glm::vec3> nextField = gridField;
-
-                    for (int i = 0; i < m_iCellX; ++i)
-                        for (int j = 0; j < m_iCellY; ++j)
-                            for (int k = 0; k < m_iCellZ; ++k) {
-                                int idx = index2GridOffset(glm::ivec3(i, j, k));
-                                
-                                if (valid[idx] || m_type[idx] == SOLID_CELL) continue;
-
-                                float sum = 0.0f;
-                                int count = 0;
-
-                                for (auto const& offset : neighborOffsets) {
-                                    glm::ivec3 n = glm::ivec3(i, j, k) + offset;
-                                    if (n.x >= 0 && n.x < m_iCellX && n.y >= 0 && n.y < m_iCellY && n.z >= 0 && n.z < m_iCellZ) {
-                                        int nIdx = index2GridOffset(n);
-                                        if (valid[nIdx]) {
-                                            sum += gridField[nIdx][dir];
-                                            count++;
-                                        }
-                                    }
-                                }
-
-                                if (count > 0) {
-                                    nextField[idx][dir] = sum / static_cast<float>(count);
-                                    nextValid[idx] = 1;
-                                }
-                            }
-                    valid = std::move(nextValid);
-                    gridField = std::move(nextField);
-                }
-            }
-        };
-
         if (toGrid) {
-            resetGridData();
-            rebuildCellTypes();
+            resetGridData(m_vel, m_near_num);
+            rebuildCellTypes(
+                m_type, m_s, m_particlePos, gridMin, m_fInvSpacing,
+                m_iCellX, m_iCellY, m_iCellZ,
+                [&](glm::ivec3 index) { return index2GridOffset(index); });
 
             for (int p = 0; p < static_cast<int>(m_particlePos.size()); ++p)
                 accumulateParticleToGrid(m_particlePos[p], m_particleVel[p]);
             
-            normalizeGridVelocities();
+            normalizeGridVelocities(m_vel, m_near_num, m_type);
             m_pre_vel = m_vel;
             return;
         }
 
-        extrapolateVelocityField(m_vel);
-        extrapolateVelocityField(m_pre_vel);
+        extrapolateVelocityField(
+            m_vel, m_near_num, m_type, m_iCellX, m_iCellY, m_iCellZ,
+            [&](glm::ivec3 index) { return index2GridOffset(index); });
+        extrapolateVelocityField(
+            m_pre_vel, m_near_num, m_type, m_iCellX, m_iCellY, m_iCellZ,
+            [&](glm::ivec3 index) { return index2GridOffset(index); });
 
         for (int p = 0; p < m_particlePos.size(); ++p) {
             const glm::vec3 oldVel = m_particleVel[p];
@@ -324,6 +361,118 @@ namespace VCX::Labs::Fluid {
             glm::vec3 flipVel = oldVel + (picVel - oldGridVel);
 
             m_particleVel[p] = (1.0f - flipRatio) * picVel + flipRatio * flipVel;
+        }
+    }
+
+    void Simulator::transferVelocitiesAPIC(bool toGrid) {
+        const glm::vec3 gridMin(-0.5f, -0.5f, -0.5f);
+
+        auto gridSamplePosition = [&](glm::ivec3 const & node, int dir) -> glm::vec3 {
+            glm::vec3 pos = gridMin + glm::vec3(node) * m_h + staggeredOffset(dir, m_h);
+            return pos;
+        };
+
+        if (toGrid) {
+            resetGridData(m_vel, m_near_num);
+            rebuildCellTypes(
+                m_type, m_s, m_particlePos, gridMin, m_fInvSpacing,
+                m_iCellX, m_iCellY, m_iCellZ,
+                [&](glm::ivec3 index) { return index2GridOffset(index); });
+
+            for (int p = 0; p < static_cast<int>(m_particlePos.size()); ++p) {
+                glm::vec3 const & pos = m_particlePos[p];
+                glm::vec3 const & vel = m_particleVel[p];
+                glm::mat3 const & C = m_particleC[p];
+
+                for (int dir = 0; dir < 3; ++dir) {
+                    Trilerp stencil = buildStencil(
+                        pos, gridMin, m_fInvSpacing, m_h, dir, m_iCellX, m_iCellY, m_iCellZ);
+
+                    for (int s = 0; s < stencil.count; ++s) {
+                        glm::ivec3 const node = stencil.nodes[s];
+                        float const w = stencil.weights[s];
+                        if (!isValidVelocity(node.x, node.y, node.z, dir)) continue;
+
+                        glm::vec3 dx = gridSamplePosition(node, dir) - pos;
+                        float contributed = vel[dir] + glm::dot(C * dx, glm::vec3(dir == 0, dir == 1, dir == 2));
+
+                        int idx = index2GridOffset(node);
+                        m_vel[idx][dir] += w * contributed;
+                        m_near_num[dir][idx] += w;
+                    }
+                }
+            }
+
+            normalizeGridVelocities(m_vel, m_near_num, m_type);
+            m_pre_vel = m_vel;
+            return;
+        }
+
+        extrapolateVelocityField(
+            m_vel, m_near_num, m_type, m_iCellX, m_iCellY, m_iCellZ,
+            [&](glm::ivec3 index) { return index2GridOffset(index); });
+        extrapolateVelocityField(
+            m_pre_vel, m_near_num, m_type, m_iCellX, m_iCellY, m_iCellZ,
+            [&](glm::ivec3 index) { return index2GridOffset(index); });
+
+        for (int p = 0; p < static_cast<int>(m_particlePos.size()); ++p) {
+            glm::vec3 const & pos = m_particlePos[p];
+
+            glm::vec3 newVel(0.0f);
+            glm::vec3 rowX(0.0f);
+            glm::vec3 rowY(0.0f);
+            glm::vec3 rowZ(0.0f);
+
+            for (int dir = 0; dir < 3; ++dir) {
+                Trilerp stencil = buildStencil(
+                    pos, gridMin, m_fInvSpacing, m_h, dir, m_iCellX, m_iCellY, m_iCellZ);
+
+                float sum = 0.0f;
+                float sumW = 0.0f;
+
+                for (int s = 0; s < stencil.count; ++s) {
+                    glm::ivec3 const node = stencil.nodes[s];
+                    float const w = stencil.weights[s];
+                    if (!isValidVelocity(node.x, node.y, node.z, dir)) continue;
+
+                    int idx = index2GridOffset(node);
+                    float u = m_vel[idx][dir];
+                    sum += w * u;
+                    sumW += w;
+                }
+
+                if (sumW > 1e-8f)
+                    newVel[dir] = sum / sumW;
+
+                // Recover only the local affine variation, not the constant part.
+                // This is noticeably more stable near free surfaces / boundaries.
+                glm::vec3 row(0.0f);
+                for (int s = 0; s < stencil.count; ++s) {
+                    glm::ivec3 const node = stencil.nodes[s];
+                    float const w = stencil.weights[s];
+                    if (!isValidVelocity(node.x, node.y, node.z, dir)) continue;
+
+                    int idx = index2GridOffset(node);
+                    glm::vec3 dx = gridSamplePosition(node, dir) - pos;
+                    float du = m_vel[idx][dir] - newVel[dir];
+                    row += w * du * dx;
+                }
+
+                if (dir == 0) rowX = row;
+                if (dir == 1) rowY = row;
+                if (dir == 2) rowZ = row;
+            }
+
+            m_particleVel[p] = newVel;
+
+            float const scale = 4.0f / (m_h * m_h);
+            glm::mat3 C(0.0f);
+            C[0] = glm::vec3(rowX.x, rowY.x, rowZ.x);
+            C[1] = glm::vec3(rowX.y, rowY.y, rowZ.y);
+            C[2] = glm::vec3(rowX.z, rowY.z, rowZ.z);
+
+            // A little damping helps this approximate staggered-grid APIC stay stable.
+            m_particleC[p] = 0.95f * (C * scale);
         }
     }
 

@@ -84,8 +84,6 @@ namespace VCX::Labs::Fluid {
         ImGui::Checkbox("Use Fixed dt", &_useFixedDt);
         ImGui::SliderFloat("Fixed dt", &_fixedDt, 1.0f / 240.0f, 1.0f / 100.0f, "%.5f");
         ImGui::SliderFloat("Time Scale", &_timeScale, 0.1f, 2.0f, "%.2f");
-        ImGui::SliderFloat("flipRatio", &_sim.m_fRatio, 0.0f, 1.0f, "%.2f");
-
         ImGui::SliderInt("Grid Resolution", &_gridResolution, 20, 40);
         ImGui::SliderInt("Sub Steps", &_numSubSteps, 1, 4);
         ImGui::SliderInt("Particle Iters", &_numParticleIters, 1, 10);
@@ -128,8 +126,13 @@ namespace VCX::Labs::Fluid {
             int sm = static_cast<int>(_simMode);
             ImGui::RadioButton("FLIP", &sm, static_cast<int>(SimMode::FLIP));
             ImGui::SameLine();
-            ImGui::RadioButton("APIC (skeleton)", &sm, static_cast<int>(SimMode::APIC));
+            ImGui::RadioButton("APIC", &sm, static_cast<int>(SimMode::APIC));
             _simMode = static_cast<SimMode>(sm);
+
+            if (_simMode == SimMode::FLIP)
+                ImGui::SliderFloat("flipRatio", &_sim.m_fRatio, 0.0f, 1.0f, "%.2f");
+            else
+                ImGui::TextUnformatted("APIC has no flip ratio.");
         }
 
 
@@ -243,6 +246,32 @@ namespace VCX::Labs::Fluid {
         UpdateColorByMode();
     }
 
+    void CaseFluid::StepAPIC(float dt) {
+        float const sdt = dt / static_cast<float>(_numSubSteps);
+
+        for (int step = 0; step < _numSubSteps; ++step) {
+            _sim.integrateParticles(sdt);
+            _sim.handleParticleCollisions(_enableObstacle ? _obstaclePos : glm::vec3(0.0f),
+                                        _enableObstacle ? _obstacleRadius : 0.0f,
+                                        _enableObstacle ? _obstacleVel : glm::vec3(0.0f));
+
+            if (_separateParticles) {
+                _sim.pushParticlesApart(_numParticleIters);
+            }
+
+            _sim.handleParticleCollisions(_enableObstacle ? _obstaclePos : glm::vec3(0.0f),
+                                        _enableObstacle ? _obstacleRadius : 0.0f,
+                                        _enableObstacle ? _obstacleVel : glm::vec3(0.0f));
+
+            _sim.transferVelocitiesAPIC(true);
+            _sim.updateParticleDensity();
+            SolvePressure(sdt);
+            _sim.transferVelocitiesAPIC(false);
+        }
+
+        UpdateColorByMode();
+    }
+
     Common::CaseRenderResult CaseFluid::OnRender(std::pair<std::uint32_t, std::uint32_t> const desiredSize) {
         float dt = _useFixedDt ? _fixedDt : Engine::GetDeltaTime() * _timeScale;
         dt = std::clamp(dt, 1.0f / 300.0f, 1.0f / 100.0f);
@@ -251,11 +280,8 @@ namespace VCX::Labs::Fluid {
         if (!_paused) {
             if (_simMode == SimMode::FLIP)
                 StepFlip(dt);
-            else {
-                // B4 skeleton: APIC transfer
-                // TODO
-                StepFlip(dt);
-            }
+            else
+                StepAPIC(dt);
         }
         else UpdateColorByMode();
         _frame.Resize(desiredSize);
