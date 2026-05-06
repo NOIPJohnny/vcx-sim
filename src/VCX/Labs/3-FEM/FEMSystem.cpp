@@ -1,7 +1,73 @@
 #include "Integrator.h"
 #include "FEMSystem.h"
 
+#include <algorithm>
+#include <array>
+#include <map>
+
+#include <glm/geometric.hpp>
+
 namespace VCX::Labs::FEM {
+
+    static glm::vec3 ClosestPointOnTriangle(
+        glm::vec3 const & p,
+        glm::vec3 const & a,
+        glm::vec3 const & b,
+        glm::vec3 const & c,
+        glm::vec3 & bary) {
+        glm::vec3 const ab = b - a;
+        glm::vec3 const ac = c - a;
+        glm::vec3 const ap = p - a;
+        float const d1 = glm::dot(ab, ap);
+        float const d2 = glm::dot(ac, ap);
+        if (d1 <= 0.0f && d2 <= 0.0f) {
+            bary = glm::vec3(1.0f, 0.0f, 0.0f);
+            return a;
+        }
+
+        glm::vec3 const bp = p - b;
+        float const d3 = glm::dot(ab, bp);
+        float const d4 = glm::dot(ac, bp);
+        if (d3 >= 0.0f && d4 <= d3) {
+            bary = glm::vec3(0.0f, 1.0f, 0.0f);
+            return b;
+        }
+
+        float const vc = d1 * d4 - d3 * d2;
+        if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f) {
+            float const v = d1 / (d1 - d3);
+            bary = glm::vec3(1.0f - v, v, 0.0f);
+            return a + v * ab;
+        }
+
+        glm::vec3 const cp = p - c;
+        float const d5 = glm::dot(ab, cp);
+        float const d6 = glm::dot(ac, cp);
+        if (d6 >= 0.0f && d5 <= d6) {
+            bary = glm::vec3(0.0f, 0.0f, 1.0f);
+            return c;
+        }
+
+        float const vb = d5 * d2 - d1 * d6;
+        if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f) {
+            float const w = d2 / (d2 - d6);
+            bary = glm::vec3(1.0f - w, 0.0f, w);
+            return a + w * ac;
+        }
+
+        float const va = d3 * d6 - d5 * d4;
+        if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f) {
+            float const w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+            bary = glm::vec3(0.0f, 1.0f - w, w);
+            return b + w * (c - b);
+        }
+
+        float const denom = 1.0f / (va + vb + vc);
+        float const v = vb * denom;
+        float const w = vc * denom;
+        bary = glm::vec3(1.0f - v - w, v, w);
+        return a + ab * v + ac * w;
+    }
 
     FEMSystem::FEMSystem() {
         model = std::make_unique<LinearModel>();
@@ -19,6 +85,7 @@ namespace VCX::Labs::FEM {
         forces.clear();
         externalForces.clear();
         tets.clear();
+        surfaceFaces.clear();
 
         SetupLameParameters();
 
@@ -58,6 +125,8 @@ namespace VCX::Labs::FEM {
                         GetID(i + 1, j + 1, k), 
                         GetID(i + 1, j + 1, k + 1));
                 }
+
+    BuildSurfaceFaces();
             
     for (std::size_t j = 0; j <= wy; j++)
         for (std::size_t k = 0; k <= wz; k++)
@@ -106,6 +175,34 @@ namespace VCX::Labs::FEM {
         tets.emplace_back(v0, v1, v2, v3);
     }
 
+    void FEMSystem::BuildSurfaceFaces() {
+        surfaceFaces.clear();
+
+        std::map<std::array<int, 3>, std::array<int, 3>> boundaryFaces;
+        for (auto const & tet : tets) {
+            std::array<std::array<int, 3>, 4> const faces = {{
+                { tet.indices[0], tet.indices[2], tet.indices[1] },
+                { tet.indices[0], tet.indices[1], tet.indices[3] },
+                { tet.indices[0], tet.indices[3], tet.indices[2] },
+                { tet.indices[1], tet.indices[2], tet.indices[3] },
+            }};
+
+            for (auto const & face : faces) {
+                std::array<int, 3> key = face;
+                std::sort(key.begin(), key.end());
+                auto it = boundaryFaces.find(key);
+                if (it == boundaryFaces.end())
+                    boundaryFaces.emplace(key, face);
+                else
+                    boundaryFaces.erase(it);
+            }
+        }
+
+        surfaceFaces.reserve(boundaryFaces.size());
+        for (auto const & [_, face] : boundaryFaces)
+            surfaceFaces.push_back(face);
+    }
+
     void FEMSystem::ComputeInternalForces() {
         for (auto& force : forces)
             force = glm::vec3(0.0f);
@@ -137,6 +234,78 @@ namespace VCX::Labs::FEM {
             if (!fixed[tet.indices[1]]) forces[tet.indices[1]] += f1;
             if (!fixed[tet.indices[2]]) forces[tet.indices[2]] += f2;
             if (!fixed[tet.indices[3]]) forces[tet.indices[3]] += f3;
+        }
+    }
+
+    void FEMSystem::ApplyCollisionForces() {
+        if (!enableCollision)
+            return;
+
+        if (useSphereCollider) {
+            for (auto const & face : surfaceFaces) {
+                int const i0 = face[0];
+                int const i1 = face[1];
+                int const i2 = face[2];
+                glm::vec3 bary(0.0f);
+                glm::vec3 const q = ClosestPointOnTriangle(
+                    sphereCenter,
+                    positions[i0],
+                    positions[i1],
+                    positions[i2],
+                    bary
+                );
+                glm::vec3 const dir = q - sphereCenter;
+                float const dist = glm::length(dir);
+                float const penetration = sphereRadius - dist;
+                if (penetration <= 0.0f)
+                    continue;
+
+                glm::vec3 const normal = dist > 1e-6f ? dir / dist : glm::vec3(0.0f, 1.0f, 0.0f);
+                glm::vec3 const qVelocity =
+                    bary.x * velocities[i0] +
+                    bary.y * velocities[i1] +
+                    bary.z * velocities[i2];
+                float const normalVelocity = glm::dot(qVelocity, normal);
+                glm::vec3 collisionForce = collisionStiffness * penetration * normal;
+                if (normalVelocity < 0.0f)
+                    collisionForce += -collisionDamping * normalVelocity * normal;
+
+                if (!fixed[i0]) forces[i0] += bary.x * collisionForce;
+                if (!fixed[i1]) forces[i1] += bary.y * collisionForce;
+                if (!fixed[i2]) forces[i2] += bary.z * collisionForce;
+            }
+            return;
+        }
+
+        for (std::size_t i = 0; i < positions.size(); ++i) {
+            if (fixed[i])
+                continue;
+
+            glm::vec3 normal(0.0f, 1.0f, 0.0f);
+            float penetration = 0.0f;
+
+            if (useSphereCollider) {
+                glm::vec3 const dir = positions[i] - sphereCenter;
+                float const dist = glm::length(dir);
+                penetration = sphereRadius - dist;
+                if (penetration <= 0.0f)
+                    continue;
+                normal = dist > 1e-6f ? dir / dist : glm::vec3(0.0f, 1.0f, 0.0f);
+            } else {
+                penetration = groundY - positions[i].y;
+                if (penetration <= 0.0f)
+                    continue;
+            }
+
+            if (penetration <= 0.0f)
+                continue;
+
+            float const normalVelocity = glm::dot(velocities[i], normal);
+            glm::vec3 collisionForce = collisionStiffness * penetration * normal;
+            if (normalVelocity < 0.0f)
+                collisionForce += -collisionDamping * normalVelocity * normal;
+
+            forces[i] += collisionForce;
         }
     }
 } // namespace VCX::Labs::FEM

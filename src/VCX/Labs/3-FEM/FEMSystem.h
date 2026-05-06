@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <vector>
 #include <memory>
 #include <Eigen/Dense>
@@ -22,6 +23,7 @@ namespace VCX::Labs::FEM {
         std::vector<glm::vec3>  externalForces;
 
         std::vector<TetElement> tets;
+        std::vector<std::array<int, 3>> surfaceFaces;
 
         std::unique_ptr<HyperElasticModel> model;
 
@@ -36,6 +38,14 @@ namespace VCX::Labs::FEM {
         glm::vec3 gravity = glm::vec3(0.0f, -0.05f, 0.0f);
         float damping = 0.5f;
 
+        bool enableCollision = true;
+        bool useSphereCollider = false;
+        float groundY = 0.0f;
+        glm::vec3 sphereCenter = glm::vec3(5.0f, -0.6f, 1.0f);
+        float sphereRadius = 1.0f;
+        float collisionStiffness = 100000.0f;
+        float collisionDamping = 500.0f;
+
         // grid
         std::size_t wx = 8, wy = 2, wz = 2;
         float delta = 1.0f; // grid spacing
@@ -46,6 +56,7 @@ namespace VCX::Labs::FEM {
         void Update(float dt);
         void SetupLameParameters();
         void ComputeInternalForces();
+        void ApplyCollisionForces();
 
         inline int GetID(std::size_t const i, std::size_t const j, std::size_t const k) const {
             return i * (wy + 1) * (wz + 1) + j * (wz + 1) + k;
@@ -54,5 +65,6 @@ namespace VCX::Labs::FEM {
     private:
         void AddParticle(const glm::vec3& pos);
         void AddTet(int v0, int v1, int v2, int v3);  
+        void BuildSurfaceFaces();
     };
 } // namespace VCX::Labs::FEM

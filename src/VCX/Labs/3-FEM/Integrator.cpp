@@ -1,5 +1,6 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
+#include <glm/geometric.hpp>
 
 #include "Integrator.h"
 #include "FEMSystem.h"
@@ -121,6 +122,7 @@ namespace VCX::Labs::FEM {
     void ExplicitIntegrator::Step(FEMSystem& system, float dt) {
         system.SetupLameParameters();
         system.ComputeInternalForces();
+        system.ApplyCollisionForces();
         for (std::size_t i = 0; i < system.positions.size(); ++i) {
             if(system.fixed[i]) continue;
             glm::vec3 f_ext = system.masses[i] * system.gravity - system.damping * system.velocities[i] + system.externalForces[i];
@@ -128,6 +130,22 @@ namespace VCX::Labs::FEM {
 
             system.velocities[i] += (f_tot / system.masses[i]) * dt;
             system.positions[i] += system.velocities[i] * dt;
+
+            if (system.enableCollision && system.useSphereCollider) {
+                glm::vec3 dir = system.positions[i] - system.sphereCenter;
+                float const dist = glm::length(dir);
+                if (dist < system.sphereRadius) {
+                    glm::vec3 const normal = dist > 1e-6f ? dir / dist : glm::vec3(0.0f, 1.0f, 0.0f);
+                    system.positions[i] = system.sphereCenter + normal * system.sphereRadius;
+                    float const normalVelocity = glm::dot(system.velocities[i], normal);
+                    if (normalVelocity < 0.0f)
+                        system.velocities[i] -= normalVelocity * normal;
+                }
+            } else if (system.enableCollision && system.positions[i].y < system.groundY) {
+                    system.positions[i].y = system.groundY;
+                    if (system.velocities[i].y < 0.0f)
+                        system.velocities[i].y = 0.0f;
+            }
         }
     }
 } //namespace VCX::Labs::FEM

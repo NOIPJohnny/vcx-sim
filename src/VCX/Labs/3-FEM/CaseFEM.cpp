@@ -32,12 +32,31 @@ namespace VCX::Labs::FEM {
                 .Add<glm::vec3>("color", Engine::GL::DrawFrequency::Stream, 3),
             Engine::GL::PrimitiveType::Triangles
         ),
+        _surfaceItem(
+            Engine::GL::VertexLayout()
+                .Add<glm::vec3>("position", Engine::GL::DrawFrequency::Stream, 0),
+            Engine::GL::PrimitiveType::Triangles
+        ),
         _edgeItem(
             Engine::GL::VertexLayout()
                 .Add<glm::vec3>("position", Engine::GL::DrawFrequency::Stream, 0),
             Engine::GL::PrimitiveType::Lines
         ),
+        _groundItem(
+            Engine::GL::VertexLayout()
+                .Add<glm::vec3>("position", Engine::GL::DrawFrequency::Static, 0),
+            Engine::GL::PrimitiveType::Lines
+        ),
+        _colliderItem(
+            Engine::GL::VertexLayout()
+                .Add<glm::vec3>("position", Engine::GL::DrawFrequency::Static, 0)
+                .Add<glm::vec3>("normal", Engine::GL::DrawFrequency::Static, 1)
+                .Add<glm::vec3>("offset", Engine::GL::DrawFrequency::Stream, 2)
+                .Add<glm::vec3>("color", Engine::GL::DrawFrequency::Stream, 3),
+            Engine::GL::PrimitiveType::Triangles
+        ),
         _particleModel(Engine::Model { Engine::Sphere(6, 0.045f), 0 }),
+        _colliderModel(Engine::Model { Engine::Sphere(24, _system.sphereRadius), 0 }),
         _sceneObject(1) {
 
         _particleItem.UpdateVertexBuffer("position", Engine::make_span_bytes<glm::vec3>(_particleModel.Mesh.Positions));
@@ -45,6 +64,12 @@ namespace VCX::Labs::FEM {
         _particleItem.UpdateElementBuffer(_particleModel.Mesh.Indices);
         _particleItem.SetAttributeDivisor(2, 1);
         _particleItem.SetAttributeDivisor(3, 1);
+
+        _colliderItem.UpdateVertexBuffer("position", Engine::make_span_bytes<glm::vec3>(_colliderModel.Mesh.Positions));
+        _colliderItem.UpdateVertexBuffer("normal", Engine::make_span_bytes<glm::vec3>(_colliderModel.Mesh.Normals));
+        _colliderItem.UpdateElementBuffer(_colliderModel.Mesh.Indices);
+        _colliderItem.SetAttributeDivisor(2, 1);
+        _colliderItem.SetAttributeDivisor(3, 1);
 
         _program.BindUniformBlock("PassConstants", 1);
         _program.GetUniforms().SetByName("u_AmbientScale", 1.0f);
@@ -57,6 +82,7 @@ namespace VCX::Labs::FEM {
         _cameraManager.AutoRotate = false;
         _cameraManager.Save(_camera);
 
+        UpdateGroundRenderData();
         ResetSystem();
     }
 
@@ -75,11 +101,13 @@ namespace VCX::Labs::FEM {
         ImGui::SliderInt("Substeps", &_substeps, 1, 20);
 
         ImGui::Spacing();
-        ImGui::SliderFloat("Young's Modulus", &_system.E, 100.0f, 50000.0f, "%.0f");
+        ImGui::SliderFloat("Young's Modulus", &_system.E, 100.0f, 100000.0f, "%.0f");
         ImGui::SliderFloat("Poisson Ratio", &_system.nu, 0.0f, 0.45f, "%.2f");
         ImGui::SliderFloat("Density", &_system.density, 50.0f, 2000.0f, "%.0f");
         ImGui::SliderFloat("Gravity", &_system.gravity.y, -10.0f, 1.0f, "%.3f");
         ImGui::SliderFloat("Damping", &_system.damping, 0.0f, 5.0f, "%.2f");
+        ImGui::Checkbox("Collision", &_system.enableCollision);
+        ImGui::Checkbox("Sphere Collider", &_system.useSphereCollider);
 
         ImGui::Spacing();
         int model = static_cast<int>(_elasticModel);
@@ -149,12 +177,35 @@ namespace VCX::Labs::FEM {
         _particleItem.UpdateVertexBuffer("offset", Engine::make_span_bytes<glm::vec3>(_particleOffsets));
         _particleItem.UpdateVertexBuffer("color", Engine::make_span_bytes<glm::vec3>(_particleColors));
 
+        _colliderOffsets.assign(1, _system.sphereCenter);
+        _colliderColors.assign(1, glm::vec3(0.18f, 0.55f, 0.95f));
+        _colliderItem.UpdateVertexBuffer("offset", Engine::make_span_bytes<glm::vec3>(_colliderOffsets));
+        _colliderItem.UpdateVertexBuffer("color", Engine::make_span_bytes<glm::vec3>(_colliderColors));
+
         gl_using(_frame);
         glEnable(GL_DEPTH_TEST);
         glClearColor(0.06f, 0.07f, 0.08f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        glLineWidth(1.0f);
+        _lineProgram.GetUniforms().SetByName("u_Color", glm::vec3(0.28f, 0.34f, 0.36f));
+        if (_system.enableCollision && !_system.useSphereCollider)
+            _groundItem.Draw({ _lineProgram.Use() });
+
+        if (_system.enableCollision && _system.useSphereCollider) {
+            _colliderItem.Draw(
+                { _program.Use() },
+                _colliderModel.Mesh.Indices.size(),
+                0,
+                1
+            );
+        }
+
+        _lineProgram.GetUniforms().SetByName("u_Color", glm::vec3(0.55f, 0.18f, 0.14f));
+        _surfaceItem.Draw({ _lineProgram.Use() });
+
         glLineWidth(1.5f);
+        _lineProgram.GetUniforms().SetByName("u_Color", glm::vec3(0.85f, 0.92f, 1.0f));
         _edgeItem.Draw({ _lineProgram.Use() });
         glLineWidth(1.0f);
 
@@ -186,6 +237,7 @@ namespace VCX::Labs::FEM {
         ApplyIntegrator();
         _system.ResetSystem();
         _hasLastMousePos = false;
+        UpdateSurfaceIndices();
         UpdateTetEdgeIndices();
         UpdateRenderData();
     }
@@ -304,6 +356,7 @@ namespace VCX::Labs::FEM {
         }
 
         _edgeItem.UpdateVertexBuffer("position", Engine::make_span_bytes<glm::vec3>(_edgeVertices));
+        _surfaceItem.UpdateVertexBuffer("position", Engine::make_span_bytes<glm::vec3>(_system.positions));
     }
 
     void CaseFEM::UpdateTetEdgeIndices() {
@@ -311,6 +364,50 @@ namespace VCX::Labs::FEM {
         for (std::size_t i = 0; i < _edgeIndices.size(); ++i)
             _edgeIndices[i] = static_cast<std::uint32_t>(i);
         _edgeItem.UpdateElementBuffer(_edgeIndices);
+    }
+
+    void CaseFEM::UpdateSurfaceIndices() {
+        _surfaceIndices.clear();
+        _surfaceIndices.reserve(_system.surfaceFaces.size() * 3);
+        for (auto const & face : _system.surfaceFaces) {
+            _surfaceIndices.push_back(static_cast<std::uint32_t>(face[0]));
+            _surfaceIndices.push_back(static_cast<std::uint32_t>(face[1]));
+            _surfaceIndices.push_back(static_cast<std::uint32_t>(face[2]));
+        }
+        _surfaceItem.UpdateElementBuffer(_surfaceIndices);
+    }
+
+    void CaseFEM::UpdateGroundRenderData() {
+        _groundVertices.clear();
+        _groundIndices.clear();
+
+        float const xMin = -1.0f;
+        float const xMax = float(_system.wx) * _system.delta + 1.0f;
+        float const zMin = -2.0f;
+        float const zMax = float(_system.wz) * _system.delta + 2.0f;
+        float const y = _system.groundY;
+        int const linesX = 12;
+        int const linesZ = 8;
+
+        for (int i = 0; i <= linesX; ++i) {
+            float const t = float(i) / float(linesX);
+            float const x = xMin * (1.0f - t) + xMax * t;
+            _groundVertices.emplace_back(x, y, zMin);
+            _groundVertices.emplace_back(x, y, zMax);
+        }
+        for (int i = 0; i <= linesZ; ++i) {
+            float const t = float(i) / float(linesZ);
+            float const z = zMin * (1.0f - t) + zMax * t;
+            _groundVertices.emplace_back(xMin, y, z);
+            _groundVertices.emplace_back(xMax, y, z);
+        }
+
+        _groundIndices.resize(_groundVertices.size());
+        for (std::size_t i = 0; i < _groundIndices.size(); ++i)
+            _groundIndices[i] = static_cast<std::uint32_t>(i);
+
+        _groundItem.UpdateVertexBuffer("position", Engine::make_span_bytes<glm::vec3>(_groundVertices));
+        _groundItem.UpdateElementBuffer(_groundIndices);
     }
 
 } // namespace VCX::Labs::FEM

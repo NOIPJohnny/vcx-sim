@@ -48,6 +48,8 @@ namespace VCX::Labs::FEM {
         void ApplyMouseForce(ImVec2 const & mousePos);
         void UpdateRenderData();
         void UpdateTetEdgeIndices();
+        void UpdateSurfaceIndices();
+        void UpdateGroundRenderData();
 
     private:
         FEMSystem _system;
@@ -56,8 +58,12 @@ namespace VCX::Labs::FEM {
         Engine::GL::UniqueProgram _lineProgram;
         Engine::GL::UniqueRenderFrame _frame;
         Engine::GL::UniqueIndexedRenderItem _particleItem;
+        Engine::GL::UniqueIndexedRenderItem _surfaceItem;
         Engine::GL::UniqueIndexedRenderItem _edgeItem;
+        Engine::GL::UniqueIndexedRenderItem _groundItem;
+        Engine::GL::UniqueIndexedRenderItem _colliderItem;
         Engine::Model _particleModel;
+        Engine::Model _colliderModel;
 
         Engine::Camera _camera { .Eye = glm::vec3(5.5f, 4.0f, 9.5f), .Target = glm::vec3(4.0f, 1.0f, 1.0f) };
         Rendering::SceneObject _sceneObject;
@@ -82,8 +88,13 @@ namespace VCX::Labs::FEM {
 
         std::vector<glm::vec3> _particleOffsets;
         std::vector<glm::vec3> _particleColors;
+        std::vector<std::uint32_t> _surfaceIndices;
         std::vector<glm::vec3> _edgeVertices;
         std::vector<std::uint32_t> _edgeIndices;
+        std::vector<glm::vec3> _groundVertices;
+        std::vector<std::uint32_t> _groundIndices;
+        std::vector<glm::vec3> _colliderOffsets;
+        std::vector<glm::vec3> _colliderColors;
 
         float _lastStepDt = 1.0f / 600.0f;
     };
