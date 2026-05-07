@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 #include <glm/glm.hpp>
@@ -15,6 +16,7 @@
 #include "Labs/Scene/SceneObject.h"
 
 #include "FEMSystem.h"
+#include "ClothSystem.h"
 
 namespace VCX::Labs::FEM {
 
@@ -40,19 +42,35 @@ namespace VCX::Labs::FEM {
             Implicit = 1,
         };
 
+        enum class ClothModel : int {
+            MembraneStVK = 0,
+            MembraneNeoHookean = 1,
+        };
+
+        enum class SimMode : int {
+            Solid = 0,
+            Cloth = 1,
+        };
+
     private:
         void ResetSystem();
         void ApplyModel();
         void ApplyIntegrator();
         void StepSimulation(float dt);
         void ApplyMouseForce(ImVec2 const & mousePos);
+        void ApplyClothMouseForce(ImVec2 const & mousePos);
         void UpdateRenderData();
+        void UpdateClothRenderData();
         void UpdateTetEdgeIndices();
         void UpdateSurfaceIndices();
         void UpdateGroundRenderData();
+        void UpdateClothGroundRenderData();
 
     private:
         FEMSystem _system;
+        std::unique_ptr<ClothSystem> _clothSystem;
+
+        SimMode _simMode = SimMode::Solid;
 
         Engine::GL::UniqueProgram _program;
         Engine::GL::UniqueProgram _lineProgram;
@@ -76,6 +94,7 @@ namespace VCX::Labs::FEM {
 
         ElasticModel _elasticModel = ElasticModel::Linear;
         IntegratorMode _integratorMode = IntegratorMode::Explicit;
+        ClothModel _clothModel = ClothModel::MembraneStVK;
         int _newtonIters = 8;
         float _newtonTolerance = 1e-4f;
 
@@ -95,6 +114,10 @@ namespace VCX::Labs::FEM {
         std::vector<std::uint32_t> _groundIndices;
         std::vector<glm::vec3> _colliderOffsets;
         std::vector<glm::vec3> _colliderColors;
+
+        std::vector<glm::vec3> _clothEdgeVertices;
+        std::vector<std::uint32_t> _clothEdgeIndices;
+        std::vector<std::uint32_t> _clothSurfaceIndices;
 
         float _lastStepDt = 1.0f / 600.0f;
     };

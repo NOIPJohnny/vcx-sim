@@ -87,6 +87,17 @@ namespace VCX::Labs::FEM {
     }
 
     void CaseFEM::OnSetupPropsUI() {
+        int simMode = static_cast<int>(_simMode);
+        if (ImGui::Combo("Simulation Mode", &simMode, "Solid FEM\0Cloth Membrane\0")) {
+            _simMode = static_cast<SimMode>(simMode);
+            if (_simMode == SimMode::Cloth) {
+                _camera.Eye = glm::vec3(0.0f, 2.0f, 8.0f);
+                _camera.Target = glm::vec3(2.0f, -1.5f, 2.0f);
+            }
+            ResetSystem();
+        }
+
+        ImGui::Spacing();
         if (ImGui::Button("Reset System"))
             ResetSystem();
         ImGui::SameLine();
@@ -101,39 +112,67 @@ namespace VCX::Labs::FEM {
         ImGui::SliderInt("Substeps", &_substeps, 1, 20);
 
         ImGui::Spacing();
-        ImGui::SliderFloat("Young's Modulus", &_system.E, 100.0f, 100000.0f, "%.0f");
-        ImGui::SliderFloat("Poisson Ratio", &_system.nu, 0.0f, 0.45f, "%.2f");
-        ImGui::SliderFloat("Density", &_system.density, 50.0f, 2000.0f, "%.0f");
-        ImGui::SliderFloat("Gravity", &_system.gravity.y, -10.0f, 1.0f, "%.3f");
-        ImGui::SliderFloat("Damping", &_system.damping, 0.0f, 5.0f, "%.2f");
-        ImGui::Checkbox("Collision", &_system.enableCollision);
-        ImGui::Checkbox("Sphere Collider", &_system.useSphereCollider);
 
-        ImGui::Spacing();
-        int model = static_cast<int>(_elasticModel);
-        if (ImGui::Combo("Elastic Model", &model, "Linear\0StVK\0Neo-Hookean\0Corotated\0")) {
-            _elasticModel = static_cast<ElasticModel>(model);
-            ApplyModel();
-        }
+        if (_simMode == SimMode::Solid) {
+            ImGui::SliderFloat("Young's Modulus", &_system.E, 100.0f, 100000.0f, "%.0f");
+            ImGui::SliderFloat("Poisson Ratio", &_system.nu, 0.0f, 0.45f, "%.2f");
+            ImGui::SliderFloat("Density", &_system.density, 50.0f, 2000.0f, "%.0f");
+            ImGui::SliderFloat("Gravity", &_system.gravity.y, -10.0f, 1.0f, "%.3f");
+            ImGui::SliderFloat("Damping", &_system.damping, 0.0f, 5.0f, "%.2f");
+            ImGui::Checkbox("Collision", &_system.enableCollision);
+            ImGui::Checkbox("Sphere Collider", &_system.useSphereCollider);
 
-        int integrator = static_cast<int>(_integratorMode);
-        if (ImGui::Combo("Integrator", &integrator, "Explicit\0Implicit\0")) {
-            _integratorMode = static_cast<IntegratorMode>(integrator);
-            ApplyIntegrator();
-        }
-
-        if (_integratorMode == IntegratorMode::Implicit) {
-            ImGui::SliderInt("Newton Iters", &_newtonIters, 1, 30);
-            ImGui::InputFloat("Newton Tolerance", &_newtonTolerance, 0.0f, 0.0f, "%.1e");
-            if (auto * implicit = dynamic_cast<ImplicitIntegrator *>(_system.integrator.get())) {
-                implicit->maxIters = _newtonIters;
-                implicit->tol = std::max(_newtonTolerance, 1e-8f);
+            ImGui::Spacing();
+            int model = static_cast<int>(_elasticModel);
+            if (ImGui::Combo("Elastic Model", &model, "Linear\0StVK\0Neo-Hookean\0Corotated\0")) {
+                _elasticModel = static_cast<ElasticModel>(model);
+                ApplyModel();
             }
+
+            int integrator = static_cast<int>(_integratorMode);
+            if (ImGui::Combo("Integrator", &integrator, "Explicit\0Implicit\0")) {
+                _integratorMode = static_cast<IntegratorMode>(integrator);
+                ApplyIntegrator();
+            }
+
+            if (_integratorMode == IntegratorMode::Implicit) {
+                ImGui::SliderInt("Newton Iters", &_newtonIters, 1, 30);
+                ImGui::InputFloat("Newton Tolerance", &_newtonTolerance, 0.0f, 0.0f, "%.1e");
+                if (auto * implicit = dynamic_cast<ImplicitIntegrator *>(_system.integrator.get())) {
+                    implicit->maxIters = _newtonIters;
+                    implicit->tol = std::max(_newtonTolerance, 1e-8f);
+                }
+            }
+
+            ImGui::Spacing();
+            ImGui::Text("Particles: %d", static_cast<int>(_system.positions.size()));
+            ImGui::Text("Tets: %d", static_cast<int>(_system.tets.size()));
+        } else {
+            if (!_clothSystem) { ResetSystem(); }
+            ImGui::SliderFloat("Young's Modulus", &_clothSystem->E, 100.0f, 50000.0f, "%.0f");
+            ImGui::SliderFloat("Poisson Ratio", &_clothSystem->nu, 0.0f, 0.45f, "%.2f");
+            ImGui::SliderFloat("Density", &_clothSystem->density, 0.01f, 2.0f, "%.3f");
+            ImGui::SliderFloat("Gravity", &_clothSystem->gravity.y, -20.0f, 1.0f, "%.3f");
+            ImGui::SliderFloat("Damping", &_clothSystem->damping, 0.0f, 10.0f, "%.2f");
+            ImGui::Checkbox("Ground Collision", &_clothSystem->enableCollision);
+            if (_clothSystem->enableCollision)
+                ImGui::SliderFloat("Ground Y", &_clothSystem->groundY, -10.0f, 5.0f, "%.2f");
+
+            ImGui::Spacing();
+            int clothModel = static_cast<int>(_clothModel);
+            if (ImGui::Combo("Membrane Model", &clothModel, "StVK\0Neo-Hookean\0")) {
+                _clothModel = static_cast<ClothModel>(clothModel);
+                if (_clothModel == ClothModel::MembraneStVK)
+                    _clothSystem->model = std::make_unique<MembraneStVK>();
+                else
+                    _clothSystem->model = std::make_unique<MembraneNeoHookean>();
+            }
+
+            ImGui::Spacing();
+            ImGui::Text("Vertices: %d", static_cast<int>(_clothSystem->positions.size()));
+            ImGui::Text("Triangles: %d", static_cast<int>(_clothSystem->elements.size()));
         }
 
-        ImGui::Spacing();
-        ImGui::Text("Particles: %d", static_cast<int>(_system.positions.size()));
-        ImGui::Text("Tets: %d", static_cast<int>(_system.tets.size()));
         ImGui::Text("Current dt: %.5f", _lastStepDt);
     }
 
@@ -146,13 +185,28 @@ namespace VCX::Labs::FEM {
         _lastStepDt = _fixedDt;
 
         if (shouldStep) {
-            ApplyMouseForce(_lastMousePos);
-            StepSimulation(_fixedDt);
-            std::fill(_system.externalForces.begin(), _system.externalForces.end(), glm::vec3(0.0f));
+            if (_simMode == SimMode::Solid) {
+                ApplyMouseForce(_lastMousePos);
+                StepSimulation(_fixedDt);
+                std::fill(_system.externalForces.begin(), _system.externalForces.end(), glm::vec3(0.0f));
+            } else {
+                ApplyClothMouseForce(_lastMousePos);
+                int const clothSubsteps = std::max(_substeps, 1);
+                float const h = _fixedDt / static_cast<float>(clothSubsteps);
+                for (int i = 0; i < clothSubsteps; ++i) {
+                    _clothSystem->Update(h);
+                }
+                std::fill(_clothSystem->externalForces.begin(), _clothSystem->externalForces.end(), glm::vec3(0.0f));
+            }
             _stepOnce = false;
         }
 
-        UpdateRenderData();
+        if (_simMode == SimMode::Solid)
+            UpdateRenderData();
+        else if (_clothSystem)
+            UpdateClothRenderData();
+        else
+            UpdateRenderData();
 
         glm::mat4 const projection = _camera.GetProjectionMatrix(float(desiredSize.first) / float(desiredSize.second));
         glm::mat4 const view = _camera.GetViewMatrix();
@@ -170,51 +224,86 @@ namespace VCX::Labs::FEM {
         _lineProgram.GetUniforms().SetByName("u_Projection", projection);
         _lineProgram.GetUniforms().SetByName("u_View", view);
 
-        _particleOffsets = _system.positions;
-        _particleColors.assign(_system.positions.size(), glm::vec3(0.9f, 0.3f, 0.3f));
-        if (_controlledVertex >= 0 && _controlledVertex < static_cast<int>(_particleColors.size()))
-            _particleColors[_controlledVertex] = glm::vec3(1.0f, 0.9f, 0.15f);
-        _particleItem.UpdateVertexBuffer("offset", Engine::make_span_bytes<glm::vec3>(_particleOffsets));
-        _particleItem.UpdateVertexBuffer("color", Engine::make_span_bytes<glm::vec3>(_particleColors));
+        if (_simMode == SimMode::Solid) {
+            _particleOffsets = _system.positions;
+            _particleColors.assign(_system.positions.size(), glm::vec3(0.9f, 0.3f, 0.3f));
+            if (_controlledVertex >= 0 && _controlledVertex < static_cast<int>(_particleColors.size()))
+                _particleColors[_controlledVertex] = glm::vec3(1.0f, 0.9f, 0.15f);
+            _particleItem.UpdateVertexBuffer("offset", Engine::make_span_bytes<glm::vec3>(_particleOffsets));
+            _particleItem.UpdateVertexBuffer("color", Engine::make_span_bytes<glm::vec3>(_particleColors));
 
-        _colliderOffsets.assign(1, _system.sphereCenter);
-        _colliderColors.assign(1, glm::vec3(0.18f, 0.55f, 0.95f));
-        _colliderItem.UpdateVertexBuffer("offset", Engine::make_span_bytes<glm::vec3>(_colliderOffsets));
-        _colliderItem.UpdateVertexBuffer("color", Engine::make_span_bytes<glm::vec3>(_colliderColors));
+            _colliderOffsets.assign(1, _system.sphereCenter);
+            _colliderColors.assign(1, glm::vec3(0.18f, 0.55f, 0.95f));
+            _colliderItem.UpdateVertexBuffer("offset", Engine::make_span_bytes<glm::vec3>(_colliderOffsets));
+            _colliderItem.UpdateVertexBuffer("color", Engine::make_span_bytes<glm::vec3>(_colliderColors));
+        } else if (_clothSystem) {
+            _particleOffsets = _clothSystem->positions;
+            _particleColors.assign(_clothSystem->positions.size(), glm::vec3(0.35f, 0.55f, 0.85f));
+            if (_controlledVertex >= 0 && _controlledVertex < static_cast<int>(_particleColors.size()))
+                _particleColors[_controlledVertex] = glm::vec3(1.0f, 0.9f, 0.15f);
+            _particleItem.UpdateVertexBuffer("offset", Engine::make_span_bytes<glm::vec3>(_particleOffsets));
+            _particleItem.UpdateVertexBuffer("color", Engine::make_span_bytes<glm::vec3>(_particleColors));
+        }
 
         gl_using(_frame);
         glEnable(GL_DEPTH_TEST);
         glClearColor(0.06f, 0.07f, 0.08f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glLineWidth(1.0f);
-        _lineProgram.GetUniforms().SetByName("u_Color", glm::vec3(0.28f, 0.34f, 0.36f));
-        if (_system.enableCollision && !_system.useSphereCollider)
+        if (_simMode == SimMode::Solid) {
+            glLineWidth(1.0f);
+            _lineProgram.GetUniforms().SetByName("u_Color", glm::vec3(0.28f, 0.34f, 0.36f));
+            if (_system.enableCollision && !_system.useSphereCollider)
+                _groundItem.Draw({ _lineProgram.Use() });
+
+            if (_system.enableCollision && _system.useSphereCollider) {
+                _colliderItem.Draw(
+                    { _program.Use() },
+                    _colliderModel.Mesh.Indices.size(),
+                    0,
+                    1
+                );
+            }
+
+            _lineProgram.GetUniforms().SetByName("u_Color", glm::vec3(0.55f, 0.18f, 0.14f));
+            _surfaceItem.Draw({ _lineProgram.Use() });
+
+            glLineWidth(1.5f);
+            _lineProgram.GetUniforms().SetByName("u_Color", glm::vec3(0.85f, 0.92f, 1.0f));
+            _edgeItem.Draw({ _lineProgram.Use() });
+            glLineWidth(1.0f);
+
+            _particleItem.Draw(
+                { _program.Use() },
+                _particleModel.Mesh.Indices.size(),
+                0,
+                _system.positions.size()
+            );
+        } else if (_clothSystem) {
+            glLineWidth(1.0f);
+            _lineProgram.GetUniforms().SetByName("u_Color", glm::vec3(0.28f, 0.34f, 0.36f));
             _groundItem.Draw({ _lineProgram.Use() });
 
-        if (_system.enableCollision && _system.useSphereCollider) {
-            _colliderItem.Draw(
+            glEnable(GL_POLYGON_OFFSET_FILL);
+            glPolygonOffset(1.0f, 1.0f);
+
+            _lineProgram.GetUniforms().SetByName("u_Color", glm::vec3(0.30f, 0.50f, 0.80f));
+            _surfaceItem.Draw({ _lineProgram.Use() });
+
+            glDisable(GL_POLYGON_OFFSET_FILL);
+
+            glLineWidth(1.2f);
+            _lineProgram.GetUniforms().SetByName("u_Color", glm::vec3(1.0f, 1.0f, 1.0f));
+            _edgeItem.Draw({ _lineProgram.Use() });
+            glLineWidth(1.0f);
+
+            _particleItem.Draw(
                 { _program.Use() },
-                _colliderModel.Mesh.Indices.size(),
+                _particleModel.Mesh.Indices.size(),
                 0,
-                1
+                _clothSystem->positions.size()
             );
         }
-
-        _lineProgram.GetUniforms().SetByName("u_Color", glm::vec3(0.55f, 0.18f, 0.14f));
-        _surfaceItem.Draw({ _lineProgram.Use() });
-
-        glLineWidth(1.5f);
-        _lineProgram.GetUniforms().SetByName("u_Color", glm::vec3(0.85f, 0.92f, 1.0f));
-        _edgeItem.Draw({ _lineProgram.Use() });
-        glLineWidth(1.0f);
-
-        _particleItem.Draw(
-            { _program.Use() },
-            _particleModel.Mesh.Indices.size(),
-            0,
-            _system.positions.size()
-        );
 
         glDisable(GL_DEPTH_TEST);
 
@@ -233,12 +322,45 @@ namespace VCX::Labs::FEM {
     }
 
     void CaseFEM::ResetSystem() {
-        ApplyModel();
-        ApplyIntegrator();
-        _system.ResetSystem();
+        if (_simMode == SimMode::Solid) {
+            ApplyModel();
+            ApplyIntegrator();
+            _system.ResetSystem();
+            UpdateSurfaceIndices();
+            UpdateTetEdgeIndices();
+            UpdateGroundRenderData();
+        } else {
+            _clothSystem = std::make_unique<ClothSystem>();
+            if (_clothModel == ClothModel::MembraneStVK)
+                _clothSystem->model = std::make_unique<MembraneStVK>();
+            else
+                _clothSystem->model = std::make_unique<MembraneNeoHookean>();
+            _clothSystem->ResetSystem();
+            _clothSurfaceIndices.clear();
+            _clothSurfaceIndices.reserve(_clothSystem->elements.size() * 3);
+            for (auto const & elem : _clothSystem->elements) {
+                _clothSurfaceIndices.push_back(static_cast<std::uint32_t>(elem.indices[0]));
+                _clothSurfaceIndices.push_back(static_cast<std::uint32_t>(elem.indices[1]));
+                _clothSurfaceIndices.push_back(static_cast<std::uint32_t>(elem.indices[2]));
+            }
+            _surfaceItem.UpdateElementBuffer(_clothSurfaceIndices);
+            _clothEdgeVertices.clear();
+            _clothEdgeIndices.clear();
+            for (auto const & elem : _clothSystem->elements) {
+                int edges[3][2] = {{0, 1}, {1, 2}, {2, 0}};
+                for (auto const & edge : edges) {
+                    _clothEdgeVertices.push_back(_clothSystem->positions[elem.indices[edge[0]]]);
+                    _clothEdgeVertices.push_back(_clothSystem->positions[elem.indices[edge[1]]]);
+                }
+            }
+            _clothEdgeIndices.resize(_clothEdgeVertices.size());
+            for (size_t i = 0; i < _clothEdgeIndices.size(); ++i)
+                _clothEdgeIndices[i] = static_cast<std::uint32_t>(i);
+            _edgeItem.UpdateElementBuffer(_clothEdgeIndices);
+            UpdateClothGroundRenderData();
+        }
         _hasLastMousePos = false;
-        UpdateSurfaceIndices();
-        UpdateTetEdgeIndices();
+        _controlledVertex = -1;
         UpdateRenderData();
     }
 
@@ -339,6 +461,68 @@ namespace VCX::Labs::FEM {
         }
     }
 
+    void CaseFEM::ApplyClothMouseForce(ImVec2 const &) {
+        std::fill(_clothSystem->externalForces.begin(), _clothSystem->externalForces.end(), glm::vec3(0.0f));
+        _controlledVertex = -1;
+
+        auto const & io = ImGui::GetIO();
+        if (!_hasLastMousePos || !io.KeyAlt || !ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            return;
+
+        ImVec2 const delta = io.MouseDelta;
+        float const speedPx = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+        if (speedPx < 0.01f)
+            return;
+
+        std::uint32_t const width = std::max<std::uint32_t>(_viewportSize.first, 1);
+        std::uint32_t const height = std::max<std::uint32_t>(_viewportSize.second, 1);
+        glm::mat4 const view = _camera.GetViewMatrix();
+        glm::mat4 const projection = _camera.GetProjectionMatrix(float(width) / float(height));
+        glm::mat4 const viewProjection = projection * view;
+
+        glm::vec3 const forward = glm::normalize(_camera.Target - _camera.Eye);
+        glm::vec3 const right = glm::normalize(glm::cross(forward, _camera.Up));
+        glm::vec3 const up = glm::normalize(glm::cross(right, forward));
+        glm::vec3 const forceDir = right * delta.x + up * -delta.y;
+        float const forceDirLen = glm::length(forceDir);
+        if (forceDirLen < 1e-6f)
+            return;
+
+        glm::vec3 const force = glm::normalize(forceDir) * std::min(speedPx * _mouseForceScale, _mouseMaxForce);
+        glm::vec2 const mouse(_lastMousePos.x, _lastMousePos.y);
+        int nearestVertex = -1;
+        float nearestDist2 = std::numeric_limits<float>::max();
+
+        for (std::size_t i = 0; i < _clothSystem->positions.size(); ++i) {
+            if (_clothSystem->fixed[i])
+                continue;
+
+            glm::vec4 const clip = viewProjection * glm::vec4(_clothSystem->positions[i], 1.0f);
+            if (clip.w <= 1e-6f)
+                continue;
+
+            glm::vec3 const ndc = glm::vec3(clip) / clip.w;
+            if (ndc.z < -1.0f || ndc.z > 1.0f)
+                continue;
+
+            glm::vec2 const screen(
+                (ndc.x * 0.5f + 0.5f) * float(width),
+                (0.5f - ndc.y * 0.5f) * float(height)
+            );
+            glm::vec2 const d = screen - mouse;
+            float const dist2 = glm::dot(d, d);
+            if (dist2 < nearestDist2) {
+                nearestDist2 = dist2;
+                nearestVertex = static_cast<int>(i);
+            }
+        }
+
+        if (nearestVertex >= 0) {
+            _controlledVertex = nearestVertex;
+            _clothSystem->externalForces[nearestVertex] += force;
+        }
+    }
+
     void CaseFEM::UpdateRenderData() {
         _edgeVertices.clear();
         _edgeVertices.reserve(_edgeIndices.size());
@@ -357,6 +541,23 @@ namespace VCX::Labs::FEM {
 
         _edgeItem.UpdateVertexBuffer("position", Engine::make_span_bytes<glm::vec3>(_edgeVertices));
         _surfaceItem.UpdateVertexBuffer("position", Engine::make_span_bytes<glm::vec3>(_system.positions));
+    }
+
+    void CaseFEM::UpdateClothRenderData() {
+        _clothEdgeVertices.clear();
+        _clothEdgeVertices.reserve(_clothEdgeIndices.size());
+
+        for (auto const & elem : _clothSystem->elements) {
+            int const ids[3] = { elem.indices[0], elem.indices[1], elem.indices[2] };
+            int const edges[3][2] = { {0, 1}, {1, 2}, {2, 0} };
+            for (auto const & edge : edges) {
+                _clothEdgeVertices.push_back(_clothSystem->positions[ids[edge[0]]]);
+                _clothEdgeVertices.push_back(_clothSystem->positions[ids[edge[1]]]);
+            }
+        }
+
+        _edgeItem.UpdateVertexBuffer("position", Engine::make_span_bytes<glm::vec3>(_clothEdgeVertices));
+        _surfaceItem.UpdateVertexBuffer("position", Engine::make_span_bytes<glm::vec3>(_clothSystem->positions));
     }
 
     void CaseFEM::UpdateTetEdgeIndices() {
@@ -388,6 +589,39 @@ namespace VCX::Labs::FEM {
         float const y = _system.groundY;
         int const linesX = 12;
         int const linesZ = 8;
+
+        for (int i = 0; i <= linesX; ++i) {
+            float const t = float(i) / float(linesX);
+            float const x = xMin * (1.0f - t) + xMax * t;
+            _groundVertices.emplace_back(x, y, zMin);
+            _groundVertices.emplace_back(x, y, zMax);
+        }
+        for (int i = 0; i <= linesZ; ++i) {
+            float const t = float(i) / float(linesZ);
+            float const z = zMin * (1.0f - t) + zMax * t;
+            _groundVertices.emplace_back(xMin, y, z);
+            _groundVertices.emplace_back(xMax, y, z);
+        }
+
+        _groundIndices.resize(_groundVertices.size());
+        for (std::size_t i = 0; i < _groundIndices.size(); ++i)
+            _groundIndices[i] = static_cast<std::uint32_t>(i);
+
+        _groundItem.UpdateVertexBuffer("position", Engine::make_span_bytes<glm::vec3>(_groundVertices));
+        _groundItem.UpdateElementBuffer(_groundIndices);
+    }
+
+    void CaseFEM::UpdateClothGroundRenderData() {
+        _groundVertices.clear();
+        _groundIndices.clear();
+
+        float const xMin = -1.0f;
+        float const xMax = float(_clothSystem->wx) * _clothSystem->dx + 1.0f;
+        float const zMin = -1.0f;
+        float const zMax = float(_clothSystem->wy) * _clothSystem->dy + 1.0f;
+        float const y = _clothSystem->groundY;
+        int const linesX = 12;
+        int const linesZ = 12;
 
         for (int i = 0; i <= linesX; ++i) {
             float const t = float(i) / float(linesX);
