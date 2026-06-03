@@ -1,0 +1,25 @@
+#pragma once
+
+#include <vector>
+
+#include "Engine/app.h"
+#include "Labs/Common/UI.h"
+#include "CaseRBxFLIP.h"
+
+namespace VCX::Labs::RBxFLIP {
+    class App : public VCX::Engine::IApp {
+    private:
+        Common::UI      _ui;
+        CaseRBxFLIP   _caseRBxFLIP;
+        std::size_t _caseId = 0;
+
+        std::vector<std::reference_wrapper<Common::ICase>> _cases = {
+            _caseRBxFLIP
+        };
+
+    public:
+        App();
+
+        void OnFrame() override;
+    };
+}

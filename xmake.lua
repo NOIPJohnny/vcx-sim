@@ -138,3 +138,32 @@ target("lab3")
     if is_plat("windows") then
         add_cxflags("/EHsc")
     end
+
+target("lab4")
+    set_kind("binary")
+    add_deps("lab-common")
+    add_deps("lab-scene")
+    add_packages("eigen")
+    add_packages("fcl")
+    add_headerfiles("src/VCX/Labs/4-RBxFLIP/*.h")
+    add_headerfiles("src/VCX/Labs/4-RBxFLIP/*.hpp")
+    add_files      ("src/VCX/Labs/4-RBxFLIP/*.cpp")
+    if is_plat("windows") then
+        add_cxflags("/EHsc")
+    end
+
+target("lab4-boundary-test")
+    set_kind("binary")
+    add_packages("eigen")
+    add_packages("glm")
+    add_packages("fcl")
+    add_includedirs("src/VCX", { public = true })
+    add_files("tests/lab4_boundary_test.cpp")
+    add_files("src/VCX/Labs/4-RBxFLIP/RigidBody.cpp")
+    add_files("src/VCX/Labs/4-RBxFLIP/RigidBodySystem.cpp")
+    add_files("src/VCX/Labs/4-RBxFLIP/Contact.cpp")
+    add_files("src/VCX/Labs/4-RBxFLIP/RigidFluidCoupler.cpp")
+    add_files("src/VCX/Labs/4-RBxFLIP/FluidSimulator.cpp")
+    if is_plat("windows") then
+        add_cxflags("/EHsc")
+    end

@@ -14,9 +14,11 @@ xmake
 - 刚体仿真：`lab1`
 - 流体仿真：`lab2`
 - 软体仿真：`lab3`
+- 固液耦合仿真：`lab4`
 
 ```bash
 xmake run lab1
 xmake run lab2
 xmake run lab3
+xmake run lab4
 ```
