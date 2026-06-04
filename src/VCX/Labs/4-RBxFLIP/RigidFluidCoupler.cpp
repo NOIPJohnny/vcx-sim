@@ -5,6 +5,8 @@
 #include <cmath>
 
 namespace VCX::Labs::RBxFLIP {
+
+    constexpr float M_PI = 3.14159265358979323846f;
     namespace {
         glm::vec3 ToGlm(Eigen::Vector3f const& v) {
             return glm::vec3(v.x(), v.y(), v.z());
@@ -132,7 +134,7 @@ namespace VCX::Labs::RBxFLIP {
     }
 
     void RigidFluidCoupler::ApplyPressureForces(Simulator const& fluid, RigidBodyItem& sphere, float pressureScale) const {
-        if (sphere.GetType() != RigidBodyType::Sphere || pressureScale == 0.0f)
+        if (sphere.GetType() != RigidBodyType::Sphere)
             return;
 
         glm::vec3 const center = ToGlm(sphere.GetPosition());
@@ -140,6 +142,8 @@ namespace VCX::Labs::RBxFLIP {
         glm::ivec3 minCell;
         glm::ivec3 maxCell;
         SphereCellBounds(fluid, center, radius, minCell, maxCell);
+
+        // ---- dynamic pressure forces ----
 
         glm::ivec3 const offsets[6] = {
             { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 },
@@ -184,6 +188,47 @@ namespace VCX::Labs::RBxFLIP {
                 }
             }
         }
+
+        // ---- buoyancy force (hydrostatic pressure integral) ----
+
+        if (fluid.m_particleRestDensity <= 0.0f)
+            return;
+
+        // Compute far-field water surface height by averaging over all columns
+        float sumSurfaceY = 0.0f;
+        int numColumns = 0;
+        for (int i = 0; i < fluid.m_iCellX; ++i) {
+            for (int k = 0; k < fluid.m_iCellZ; ++k) {
+                for (int j = fluid.m_iCellY - 1; j >= 0; --j) {
+                    int idx = fluid.index2GridOffset(glm::ivec3(i, j, k));
+                    if (fluid.m_type[idx] == FLUID_CELL) {
+                        sumSurfaceY += -0.5f + (j + 0.5f) * fluid.m_h;
+                        ++numColumns;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (numColumns == 0)
+            return;
+
+        float const avgSurfaceY = sumSurfaceY / static_cast<float>(numColumns);
+        float const sphereBottom  = center.y - radius;
+        float const submergedDepth = std::max(0.0f, std::min(2.0f * radius, avgSurfaceY - sphereBottom));
+
+        if (submergedDepth <= 0.0f)
+            return;
+
+        float const h = submergedDepth;
+        float const sphereVolume = (4.0f / 3.0f) * float(M_PI) * radius * radius * radius;
+        float const capVolume = float(M_PI) * h * h * (3.0f * radius - h) / 3.0f;
+        float const submergedFraction = capVolume / sphereVolume;
+        float const g = glm::length(fluid.gravity);
+
+        float const buoyancyScale    = 0.5f;
+        float const buoyancyMagnitude = buoyancyScale * fluid.m_particleRestDensity * sphereVolume * submergedFraction * g;
+        sphere.ApplyForce(ToEigen(buoyancyMagnitude * glm::normalize(-fluid.gravity)));
     }
 
 } // namespace VCX::Labs::RBxFLIP
