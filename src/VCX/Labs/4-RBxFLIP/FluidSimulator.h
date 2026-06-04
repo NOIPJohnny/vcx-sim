@@ -62,8 +62,8 @@ namespace VCX::Labs::RBxFLIP {
         void        updateParticleColors();
         void        resetSolidMask();
         void        rebuildCellTypes();
-        inline bool isValidVelocity(int i, int j, int k, int dir);
-        inline int  index2GridOffset(glm::ivec3 index) const;
+        bool isValidVelocity(int i, int j, int k, int dir);
+        int  index2GridOffset(glm::ivec3 index) const;
 
         void SimulateTimestep(float const dt) {
             int   numSubSteps       = 1;

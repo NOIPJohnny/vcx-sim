@@ -23,6 +23,8 @@ namespace VCX::Labs::RBxFLIP {
         void Clear();
         void EnableGravity() { enableGravity = true; }
         void DisableGravity() { enableGravity = false; }
+        void SetLinearDamping(float d)  { _linearDamping = d; }
+        void SetAngularDamping(float d) { _angularDamping = d; }
 
     private:
         std::vector<RigidBodyItem> _bodies;
@@ -31,6 +33,8 @@ namespace VCX::Labs::RBxFLIP {
         bool enableGravity = false;
         float _restitution = 0.3f; // c
         float _friction = 0.3f;  // μ
+        float _linearDamping  = 1.0f;   // drag coefficient k: v *= exp(-k * dt)
+        float _angularDamping = 1.0f;   // drag coefficient k: w *= exp(-k * dt)
 
         void DetectCollisions();
         void ResolveCollisions();

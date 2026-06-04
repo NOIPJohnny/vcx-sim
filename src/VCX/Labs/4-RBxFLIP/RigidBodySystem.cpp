@@ -48,6 +48,11 @@ namespace VCX::Labs::RBxFLIP {
             q.coeffs() += 0.5f * (w_q * q).coeffs() * dt;
             q.normalize();
             body.orientation = q;
+
+            // Apply damping: v(t+dt) = v * exp(-k * dt)
+            body.v *= std::exp(-_linearDamping * dt);
+            body.w *= std::exp(-_angularDamping * dt);
+
             body.ClearForces();
         }
     }
