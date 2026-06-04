@@ -5,6 +5,8 @@
 #include <cmath>
 
 namespace VCX::Labs::RBxFLIP {
+
+    constexpr float M_PI = 3.14159265358979323846f;
     namespace {
         glm::vec3 ToGlm(Eigen::Vector3f const& v) {
             return glm::vec3(v.x(), v.y(), v.z());
