@@ -272,6 +272,7 @@ namespace VCX::Labs::RBxFLIP {
         pass.CntSpotLights = 0;
         pass.CntDirectionalLights = 0;
         _sceneObject.PassConstantsBlock.Update(pass);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 1, _sceneObject.PassConstantsBlock.Get());
 
         _lineProgram.GetUniforms().SetByName("u_Projection", pass.Projection);
         _lineProgram.GetUniforms().SetByName("u_View", pass.View);
