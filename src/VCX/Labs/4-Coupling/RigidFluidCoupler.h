@@ -3,7 +3,7 @@
 #include "FluidSimulator.h"
 #include "RigidBody.h"
 
-namespace VCX::Labs::RBxFLIP {
+namespace VCX::Labs::Coupling {
 
     class RigidFluidCoupler {
     public:
@@ -13,4 +13,4 @@ namespace VCX::Labs::RBxFLIP {
         void ApplyPressureForces(Simulator const& fluid, RigidBodyItem& sphere, float pressureScale) const;
     };
 
-} // namespace VCX::Labs::RBxFLIP
+} // namespace VCX::Labs::Coupling

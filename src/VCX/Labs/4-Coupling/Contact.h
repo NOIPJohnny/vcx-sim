@@ -2,7 +2,7 @@
 #include <Eigen/Core>
 #include "RigidBody.h"
 
-namespace VCX::Labs::RBxFLIP {
+namespace VCX::Labs::Coupling {
 
     struct Contact {
         int id1,id2;
@@ -17,4 +17,4 @@ namespace VCX::Labs::RBxFLIP {
         void ResolvePosition(RigidBodySystem& system, RigidBodyItem& body1, RigidBodyItem& body2);
     };
 
-} // namespace VCX::Labs::RBxFLIP
+} // namespace VCX::Labs::Coupling

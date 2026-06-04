@@ -5,7 +5,7 @@
 #include "RigidBody.h"
 #include "Contact.h"
 
-namespace VCX::Labs::RBxFLIP {
+namespace VCX::Labs::Coupling {
 
     class RigidBodySystem {
     public:
@@ -50,4 +50,4 @@ namespace VCX::Labs::RBxFLIP {
         void WakeBody(int id);
         void UpdateSleeping(float dt);
     };
-} // namespace VCX::Labs::RBxFLIP
+} // namespace VCX::Labs::Coupling

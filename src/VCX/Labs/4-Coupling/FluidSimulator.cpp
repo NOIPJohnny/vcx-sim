@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <array>
 
-namespace VCX::Labs::RBxFLIP {
+namespace VCX::Labs::Coupling {
 
     namespace {
         inline int clampi(int x, int low, int hi) {return std::max(low, std::min(x, hi));}
@@ -834,4 +834,4 @@ namespace VCX::Labs::RBxFLIP {
         }
     }
 
-} // namespace VCX::Labs::RBxFLIP
+} // namespace VCX::Labs::Coupling

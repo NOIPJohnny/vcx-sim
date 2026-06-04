@@ -1,6 +1,6 @@
 #include "RigidBody.h"
 
-namespace VCX::Labs::RBxFLIP {
+namespace VCX::Labs::Coupling {
 
     RigidBodyItem::RigidBodyItem(
         RigidBodyType type,
@@ -104,4 +104,4 @@ namespace VCX::Labs::RBxFLIP {
         return R * I_0_inv * R.transpose();
     }
 
-} // namespace VCX::Labs::RBxFLIP
+} // namespace VCX::Labs::Coupling

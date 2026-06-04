@@ -9,7 +9,7 @@
 #include <vector>
 
 
-namespace VCX::Labs::RBxFLIP {
+namespace VCX::Labs::Coupling {
 
     constexpr int EMPTY_CELL = 0,
                   FLUID_CELL = 1,
@@ -178,4 +178,4 @@ namespace VCX::Labs::RBxFLIP {
             }
         }
     };
-} // namespace VCX::Labs::RBxFLIP
+} // namespace VCX::Labs::Coupling

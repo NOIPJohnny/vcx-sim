@@ -16,13 +16,13 @@
 #include "RigidBodySystem.h"
 #include "RigidFluidCoupler.h"
 
-namespace VCX::Labs::RBxFLIP {
+namespace VCX::Labs::Coupling {
 
     class CaseRBxFLIP : public Common::ICase {
     public:
         CaseRBxFLIP();
 
-        std::string_view const GetName() override { return "RBxFLIP"; }
+        std::string_view const GetName() override { return "Coupling"; }
         void OnSetupPropsUI() override;
         Common::CaseRenderResult OnRender(std::pair<std::uint32_t, std::uint32_t> const desiredSize) override;
         void OnProcessInput(ImVec2 const & pos) override;
@@ -107,4 +107,4 @@ namespace VCX::Labs::RBxFLIP {
         float _lastStepDt = 1.0f / 60.0f;
     };
 
-} // namespace VCX::Labs::RBxFLIP
+} // namespace VCX::Labs::Coupling

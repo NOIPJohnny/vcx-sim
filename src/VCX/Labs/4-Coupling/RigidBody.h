@@ -3,7 +3,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
 
-namespace VCX::Labs::RBxFLIP {
+namespace VCX::Labs::Coupling {
 
     class RigidBodySystem;
 
@@ -75,4 +75,4 @@ namespace VCX::Labs::RBxFLIP {
         Eigen::Vector3f    force;
         Eigen::Vector3f    torque;
     };
-} // namespace VCX::Labs::RBxFLIP
+} // namespace VCX::Labs::Coupling

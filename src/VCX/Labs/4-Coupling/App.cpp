@@ -1,6 +1,6 @@
-#include "Labs/4-RBxFLIP/App.h"
+#include "Labs/4-Coupling/App.h"
 
-namespace VCX::Labs::RBxFLIP {
+namespace VCX::Labs::Coupling {
     App::App():
         _ui(
             Labs::Common::UIOptions { }) {

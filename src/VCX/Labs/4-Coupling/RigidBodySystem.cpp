@@ -3,7 +3,7 @@
 #include <fcl/geometry/shape/box.h>
 #include <fcl/geometry/shape/sphere.h>
 
-namespace VCX::Labs::RBxFLIP {
+namespace VCX::Labs::Coupling {
 
     void RigidBodySystem::AddBody(const RigidBodyItem& body) {
         _bodies.push_back(body);
@@ -171,4 +171,4 @@ namespace VCX::Labs::RBxFLIP {
         }
     }
 }
-} // namespace VCX::Labs::RBxFLIP
+} // namespace VCX::Labs::Coupling

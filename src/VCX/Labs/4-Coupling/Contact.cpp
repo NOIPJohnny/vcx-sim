@@ -2,7 +2,7 @@
 #include "RigidBodySystem.h"
 #include <algorithm>
 
-namespace VCX::Labs::RBxFLIP {
+namespace VCX::Labs::Coupling {
 
     void Contact::Resolve(RigidBodySystem& system, RigidBodyItem& body1, RigidBodyItem& body2) {
         float invM1 = body1.GetMass() > 0 ? body1.GetInvMass() : 0.0f;
@@ -75,4 +75,4 @@ namespace VCX::Labs::RBxFLIP {
             Depth -= actual_correction;
         }
     }
-} // namespace VCX::Labs::RBxFLIP
+} // namespace VCX::Labs::Coupling

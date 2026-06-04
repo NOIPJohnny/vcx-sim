@@ -5,7 +5,7 @@
 #include "Labs/Common/ImGuiHelper.h"
 #include "CaseRBxFLIP.h"
 
-namespace VCX::Labs::RBxFLIP {
+namespace VCX::Labs::Coupling {
 
     inline const std::vector<glm::vec3> kBoundaryVertices = {
         {-0.5f, -0.5f, -0.5f}, { 0.5f, -0.5f, -0.5f},
@@ -397,6 +397,7 @@ namespace VCX::Labs::RBxFLIP {
         pass.CntSpotLights = 0;
         pass.CntDirectionalLights = 0;
         _sceneObject.PassConstantsBlock.Update(pass);
+        glBindBufferBase(GL_UNIFORM_BUFFER, 1, _sceneObject.PassConstantsBlock.Get());
 
         _lineProgram.GetUniforms().SetByName("u_Projection", pass.Projection);
         _lineProgram.GetUniforms().SetByName("u_View", pass.View);
@@ -457,4 +458,4 @@ namespace VCX::Labs::RBxFLIP {
         _cameraManager.ProcessInput(_sceneObject.Camera, pos);
     }
 
-} // namespace VCX::Labs::RBxFLIP
+} // namespace VCX::Labs::Coupling

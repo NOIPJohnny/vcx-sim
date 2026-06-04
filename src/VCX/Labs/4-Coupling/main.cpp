@@ -1,10 +1,10 @@
 #include "Assets/bundled.h"
-#include "Labs/4-RBxFLIP/App.h"
+#include "Labs/4-Coupling/App.h"
 
 int main() {
     using namespace VCX;
-    return Engine::RunApp<Labs::RBxFLIP::App>(Engine::AppContextOptions {
-        .Title      = "VCX-sim Labs 4: RBxFLIP",
+    return Engine::RunApp<Labs::Coupling::App>(Engine::AppContextOptions {
+        .Title      = "VCX-sim Labs 4: Coupling",
         .WindowSize = { 1024, 768 },
         .FontSize   = 16,
 

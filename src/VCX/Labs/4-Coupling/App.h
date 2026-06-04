@@ -7,7 +7,7 @@
 #include "CaseRBxFLIP.h"
 #include "CaseFEMxFLIP.h"
 
-namespace VCX::Labs::RBxFLIP {
+namespace VCX::Labs::Coupling {
     class App : public VCX::Engine::IApp {
     private:
         Common::UI      _ui;
