@@ -7,6 +7,7 @@
 #include <glm/glm.hpp>
 
 #include "FEMElement.h"
+#include "FEMSoftBodyBuilder.h"
 #include "HyperElasticModels.h"
 
 namespace VCX::Labs::FEM {
@@ -47,6 +48,7 @@ namespace VCX::Labs::FEM {
         float collisionDamping = 500.0f;
 
         // grid
+        SoftBodyType softBodyType = SoftBodyType::GridBlock;
         std::size_t wx = 8, wy = 2, wz = 2;
         float delta = 1.0f; // grid spacing
 
@@ -61,10 +63,5 @@ namespace VCX::Labs::FEM {
         inline int GetID(std::size_t const i, std::size_t const j, std::size_t const k) const {
             return i * (wy + 1) * (wz + 1) + j * (wz + 1) + k;
         }
-
-    private:
-        void AddParticle(const glm::vec3& pos);
-        void AddTet(int v0, int v1, int v2, int v3);  
-        void BuildSurfaceFaces();
     };
 } // namespace VCX::Labs::FEM

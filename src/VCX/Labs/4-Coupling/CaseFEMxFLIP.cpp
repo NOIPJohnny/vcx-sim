@@ -72,6 +72,7 @@ namespace VCX::Labs::Coupling {
         _softSystem.wy = static_cast<std::size_t>(_softGridY);
         _softSystem.wz = static_cast<std::size_t>(_softGridZ);
         _softSystem.delta = _softSpacing;
+        _softSystem.softBodyType = _softBodyType;
         _softSystem.E = 1000.0f;
         _softSystem.nu = 0.25f;
         _softSystem.density = 400.0f;
@@ -125,6 +126,9 @@ namespace VCX::Labs::Coupling {
             ResetSystem();
 
         ImGui::SeparatorText("Soft Body");
+        int softBodyType = static_cast<int>(_softBodyType);
+        if (ImGui::Combo("Soft Body Type", &softBodyType, "Grid Block\0\0"))
+            _softBodyType = static_cast<FEM::SoftBodyType>(softBodyType);
         ImGui::SliderInt("Soft Grid X", &_softGridX, 2, 8);
         ImGui::SliderInt("Soft Grid Y", &_softGridY, 2, 8);
         ImGui::SliderInt("Soft Grid Z", &_softGridZ, 2, 8);

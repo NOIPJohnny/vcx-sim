@@ -15,6 +15,7 @@
 #include "FluidSimulator.h"
 #include "FEMFluidCoupler.h"
 #include "Labs/3-FEM/FEMSystem.h"
+#include "Labs/3-FEM/FEMSoftBodyBuilder.h"
 #include "Labs/3-FEM/HyperElasticModels.h"
 #include "Labs/3-FEM/Integrator.h"
 
@@ -75,6 +76,7 @@ namespace VCX::Labs::Coupling {
         float _softSpacing = 0.06f;
         glm::vec3 _softCenter = glm::vec3(0.0f, 0.25f, 0.0f);
         int _softSubsteps = 5;
+        FEM::SoftBodyType _softBodyType = FEM::SoftBodyType::GridBlock;
 
         float _couplingStrength = 0.6f;
         float _couplingDamping = 1.5f;
