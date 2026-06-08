@@ -22,7 +22,7 @@ namespace VCX::Labs::Coupling {
     public:
         CaseRBxFLIP();
 
-        std::string_view const GetName() override { return "Coupling"; }
+        std::string_view const GetName() override { return "RBxFLIP"; }
         void OnSetupPropsUI() override;
         Common::CaseRenderResult OnRender(std::pair<std::uint32_t, std::uint32_t> const desiredSize) override;
         void OnProcessInput(ImVec2 const & pos) override;
