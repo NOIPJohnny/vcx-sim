@@ -126,13 +126,27 @@ namespace VCX::Labs::Coupling {
             ResetSystem();
 
         ImGui::SeparatorText("Soft Body");
-        int softBodyType = static_cast<int>(_softBodyType);
-        if (ImGui::Combo("Soft Body Type", &softBodyType, "Grid Block\0\0"))
-            _softBodyType = static_cast<FEM::SoftBodyType>(softBodyType);
-        ImGui::SliderInt("Soft Grid X", &_softGridX, 2, 8);
-        ImGui::SliderInt("Soft Grid Y", &_softGridY, 2, 8);
-        ImGui::SliderInt("Soft Grid Z", &_softGridZ, 2, 8);
-        ImGui::SliderFloat("Soft Spacing", &_softSpacing, 0.04f, 0.1f, "%.3f");
+        if (ImGui::BeginCombo("Soft Body Type", FEM::SoftBodyTypeName(_softBodyType))) {
+            for (int i = 0; i < FEM::SoftBodyTypeCount(); ++i) {
+                auto const type = static_cast<FEM::SoftBodyType>(i);
+                bool const selected = type == _softBodyType;
+                if (ImGui::Selectable(FEM::SoftBodyTypeName(type), selected)) {
+                    _softBodyType = type;
+                    if (type == FEM::SoftBodyType::TeddyBear) {
+                        _softGridX = std::max(_softGridX, 12);
+                        _softGridY = std::max(_softGridY, 12);
+                        _softGridZ = std::max(_softGridZ, 12);
+                    }
+                }
+                if (selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SliderInt("Soft Grid X", &_softGridX, 2, 16);
+        ImGui::SliderInt("Soft Grid Y", &_softGridY, 2, 16);
+        ImGui::SliderInt("Soft Grid Z", &_softGridZ, 2, 16);
+        ImGui::SliderFloat("Soft Spacing", &_softSpacing, 0.05f, 0.1f, "%.3f");
         ImGui::SliderFloat("Soft Center Y", &_softCenter.y, -0.1f, 0.4f, "%.2f");
         ImGui::SliderFloat("Young's Modulus", &_softSystem.E, 1000.0f, 80000.0f, "%.0f");
         ImGui::SliderFloat("Poisson Ratio", &_softSystem.nu, 0.1f, 0.45f, "%.2f");
@@ -226,7 +240,7 @@ namespace VCX::Labs::Coupling {
     }
 
     void CaseFEMxFLIP::UpdateSoftEdgeIndices() {
-        _softEdgeIndices.resize(_softSystem.tets.size() * 12);
+        _softEdgeIndices.resize(_softSystem.surfaceFaces.size() * 6);
         for (std::size_t i = 0; i < _softEdgeIndices.size(); ++i)
             _softEdgeIndices[i] = static_cast<std::uint32_t>(i);
         _softEdgeItem.UpdateElementBuffer(_softEdgeIndices);
@@ -236,15 +250,13 @@ namespace VCX::Labs::Coupling {
         _softEdgeVertices.clear();
         _softEdgeVertices.reserve(_softEdgeIndices.size());
 
-        for (auto const & tet : _softSystem.tets) {
-            int const ids[4] = { tet.indices[0], tet.indices[1], tet.indices[2], tet.indices[3] };
-            int const edges[6][2] = {
-                {0, 1}, {0, 2}, {0, 3},
-                {1, 2}, {1, 3}, {2, 3},
+        for (auto const & face : _softSystem.surfaceFaces) {
+            int const edges[3][2] = {
+                {0, 1}, {1, 2}, {2, 0},
             };
             for (auto const & edge : edges) {
-                _softEdgeVertices.push_back(_softSystem.positions[ids[edge[0]]]);
-                _softEdgeVertices.push_back(_softSystem.positions[ids[edge[1]]]);
+                _softEdgeVertices.push_back(_softSystem.positions[face[edge[0]]]);
+                _softEdgeVertices.push_back(_softSystem.positions[face[edge[1]]]);
             }
         }
 

@@ -6,6 +6,8 @@ namespace VCX::Labs::FEM {
 
     enum class SoftBodyType : int {
         GridBlock = 0,
+        Sphere = 1,
+        TeddyBear = 2,
     };
 
     int SoftBodyTypeCount();
