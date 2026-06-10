@@ -6,12 +6,14 @@
 
 #include "FluidSimulator.h"
 #include "Labs/3-FEM/FEMSystem.h"
+#include "TetMesh.h"
 
 namespace VCX::Labs::Coupling {
 
     class FEMFluidCoupler {
     public:
         void ExchangeMomentum(Simulator& fluid, FEM::FEMSystem& solid, float couplingStrength);
+        void ExchangeMomentum(Simulator& fluid, FEM::TetMesh& solid, float couplingStrength);
 
     private:
         int CellIndex(Simulator const& fluid, glm::vec3 const& pos) const;

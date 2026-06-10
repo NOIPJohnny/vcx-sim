@@ -14,9 +14,8 @@
 #include "Labs/Scene/SceneObject.h"
 #include "FluidSimulator.h"
 #include "FEMFluidCoupler.h"
-#include "Labs/3-FEM/FEMSystem.h"
-#include "Labs/3-FEM/HyperElasticModels.h"
-#include "Labs/3-FEM/Integrator.h"
+#include "TetMesh.h"
+#include "FEMIntegrator.h"
 
 namespace VCX::Labs::Coupling {
 
@@ -31,20 +30,21 @@ namespace VCX::Labs::Coupling {
 
     private:
         void ResetSystem();
+        void RebuildSoftMesh();
         void StepSimulation(float dt);
         void SolvePressure(float dt);
-        void UpdateSoftEdgeIndices();
-        void UpdateSoftEdgeVertices();
         void ConstrainSoftBody();
-        void ApplySoftDamping(float dt);
         void CenterSoftBody(glm::vec3 const & center);
 
     private:
+        // fluid rendering
         Engine::GL::UniqueProgram _program;
         Engine::GL::UniqueProgram _lineProgram;
+        Engine::GL::UniqueProgram _litProgram;
         Engine::GL::UniqueRenderFrame _frame;
         Engine::GL::UniqueIndexedRenderItem _boundaryItem;
         Engine::GL::UniqueIndexedRenderItem _softEdgeItem;
+        Engine::GL::UniqueIndexedRenderItem _surfaceItem;
 
         Rendering::SceneObject _sceneObject;
         Common::OrbitCameraManager _cameraManager;
@@ -52,7 +52,8 @@ namespace VCX::Labs::Coupling {
         Engine::Model _softSphere;
 
         Simulator _sim;
-        FEM::FEMSystem _softSystem;
+        FEM::TetMesh _softMesh;
+        FEM::FEMIntegrator _femIntegrator;
         FEMFluidCoupler _coupler;
 
         bool _paused = false;
@@ -69,19 +70,38 @@ namespace VCX::Labs::Coupling {
         bool _separateParticles = true;
         glm::vec3 _initialFluidSize = glm::vec3(0.6f, 0.8f, 0.9f);
 
-        int _softGridX = 4;
-        int _softGridY = 4;
-        int _softGridZ = 4;
-        float _softSpacing = 0.06f;
-        glm::vec3 _softCenter = glm::vec3(0.0f, 0.25f, 0.0f);
-        int _softSubsteps = 5;
+        int _beamResX = 5;
+        int _beamResY = 16;
+        int _beamResZ = 5;
+        glm::vec3 _beamOrigin = glm::vec3(-0.10f, -0.30f, -0.10f);
+        glm::vec3 _beamSize = glm::vec3(0.16f, 0.48f, 0.16f);
+        float _totalMass = 0.03f;
+
+        FEM::MaterialModel _materialModel = FEM::MaterialModel::StVK;
+        float _lambda = 300.0f;
+        float _mu = 50.0f;
+        float _damping = 4.5f;
+
+        int _softSubsteps = 50;
 
         float _couplingStrength = 0.6f;
-        float _couplingDamping = 1.5f;
+
+        // surface appearance
+        glm::vec3 _surfaceColor = glm::vec3(0.9f, 0.55f, 0.2f);
+        bool _showWireframe = true;
+        bool _showSurface = true;
+        bool _showVertices = true;
+        bool _useLighting = true;
+        float _lightIntensity = 1.0f;
+        float _ambientScale = 0.30f;
+        float _shininess = 150.0f;
+        bool _flatShading = true;
+        glm::vec3 _lightDir = glm::vec3(7.0f, 9.0f, 7.0f);
 
         std::vector<glm::vec3> _softEdgeVertices;
         std::vector<std::uint32_t> _softEdgeIndices;
         std::vector<glm::vec3> _softColors;
+        std::vector<std::uint32_t> _surfaceTriIndices;
     };
 
 } // namespace VCX::Labs::Coupling
