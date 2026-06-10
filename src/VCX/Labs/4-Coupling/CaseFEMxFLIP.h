@@ -16,6 +16,7 @@
 #include "FEMFluidCoupler.h"
 #include "TetMesh.h"
 #include "FEMIntegrator.h"
+#include "Labs/3-FEM/FEMSoftBodyBuilder.h"
 
 namespace VCX::Labs::Coupling {
 
@@ -70,11 +71,12 @@ namespace VCX::Labs::Coupling {
         bool _separateParticles = true;
         glm::vec3 _initialFluidSize = glm::vec3(0.6f, 0.8f, 0.9f);
 
-        int _beamResX = 5;
-        int _beamResY = 16;
-        int _beamResZ = 5;
-        glm::vec3 _beamOrigin = glm::vec3(-0.10f, -0.30f, -0.10f);
-        glm::vec3 _beamSize = glm::vec3(0.16f, 0.48f, 0.16f);
+        int _softGridX = 5;
+        int _softGridY = 16;
+        int _softGridZ = 5;
+        float _softSpacing = 0.03f;
+        glm::vec3 _softCenter = glm::vec3(-0.02f, -0.06f, -0.02f);
+        FEM::SoftBodyType _softBodyType = FEM::SoftBodyType::GridBlock;
         float _totalMass = 0.03f;
 
         FEM::MaterialModel _materialModel = FEM::MaterialModel::StVK;

@@ -4,6 +4,7 @@
 
 #include "Engine/app.h"
 #include "Labs/Common/ImGuiHelper.h"
+#include "Labs/3-FEM/FEMSystem.h"
 #include "CaseFEMxFLIP.h"
 
 namespace VCX::Labs::Coupling {
@@ -86,16 +87,69 @@ namespace VCX::Labs::Coupling {
         _femIntegrator.material.mu     = _mu;
         _femIntegrator.materialModel   = _materialModel;
 
-        _softMesh.BuildBeam(_beamResX, _beamResY, _beamResZ,
-            Eigen::Vector3f(_beamOrigin.x, _beamOrigin.y, _beamOrigin.z),
-            Eigen::Vector3f(_beamSize.x, _beamSize.y, _beamSize.z),
-            _totalMass);
+        FEM::FEMSystem structure;
+        structure.wx = static_cast<std::size_t>(std::max(_softGridX, 1));
+        structure.wy = static_cast<std::size_t>(std::max(_softGridY, 1));
+        structure.wz = static_cast<std::size_t>(std::max(_softGridZ, 1));
+        structure.delta = _softSpacing;
+        structure.softBodyType = _softBodyType;
+        FEM::BuildSoftBodyStructure(structure, _softBodyType);
 
-        std::fill(_softMesh.fixed.begin(), _softMesh.fixed.end(), false);
+        _softMesh.restPositions.clear();
+        _softMesh.restPositions.reserve(structure.positions.size());
+        for (auto const & p : structure.positions)
+            _softMesh.restPositions.emplace_back(p.x, p.y, p.z);
+
+        if (! _softMesh.restPositions.empty()) {
+            Eigen::Vector3f minPos = _softMesh.restPositions[0];
+            Eigen::Vector3f maxPos = _softMesh.restPositions[0];
+            for (auto const & p : _softMesh.restPositions) {
+                minPos = minPos.cwiseMin(p);
+                maxPos = maxPos.cwiseMax(p);
+            }
+            Eigen::Vector3f const currentCenter = 0.5f * (minPos + maxPos);
+            Eigen::Vector3f const targetCenter(_softCenter.x, _softCenter.y, _softCenter.z);
+            Eigen::Vector3f const offset = targetCenter - currentCenter;
+            for (auto & p : _softMesh.restPositions)
+                p += offset;
+        }
+
+        _softMesh.positions = _softMesh.restPositions;
+        _softMesh.velocities.assign(_softMesh.restPositions.size(), Eigen::Vector3f::Zero());
+        _softMesh.masses.assign(_softMesh.restPositions.size(),
+            _softMesh.restPositions.empty() ? 0.0f : _totalMass / static_cast<float>(_softMesh.restPositions.size()));
+        _softMesh.fixed.assign(_softMesh.restPositions.size(), false);
+
+        _softMesh.tets.clear();
+        _softMesh.tets.reserve(structure.tets.size());
+        for (auto const & tet : structure.tets) {
+            _softMesh.tets.emplace_back(
+                tet.indices[0],
+                tet.indices[1],
+                tet.indices[2],
+                tet.indices[3]);
+        }
+
+        _softMesh.DmInv.resize(_softMesh.tets.size());
+        _softMesh.restVolume.resize(_softMesh.tets.size());
+        for (std::size_t i = 0; i < _softMesh.tets.size(); ++i) {
+            auto const & tv = _softMesh.tets[i];
+            Eigen::Vector3f const & x0 = _softMesh.restPositions[tv[0]];
+            Eigen::Vector3f const & x1 = _softMesh.restPositions[tv[1]];
+            Eigen::Vector3f const & x2 = _softMesh.restPositions[tv[2]];
+            Eigen::Vector3f const & x3 = _softMesh.restPositions[tv[3]];
+
+            Eigen::Matrix3f dm;
+            dm.col(0) = x1 - x0;
+            dm.col(1) = x2 - x0;
+            dm.col(2) = x3 - x0;
+            _softMesh.DmInv[i] = dm.inverse();
+            _softMesh.restVolume[i] = std::abs(dm.determinant()) / 6.0f;
+        }
+
         _softMesh.ExtractSurfaceFaces();
 
-        float const minSpacing = std::min({ _beamSize.x / _beamResX, _beamSize.y / _beamResY, _beamSize.z / _beamResZ });
-        _softSphere = Engine::Model{ Engine::Sphere(8, minSpacing * 0.35f), 0 };
+        _softSphere = Engine::Model{ Engine::Sphere(8, _softSpacing * 0.35f), 0 };
 
         // build surface triangle index buffer
         {
@@ -159,6 +213,24 @@ namespace VCX::Labs::Coupling {
         }
 
         if (ImGui::CollapsingHeader("Soft Body", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::BeginCombo("Soft Body Type", FEM::SoftBodyTypeName(_softBodyType))) {
+                for (int i = 0; i < FEM::SoftBodyTypeCount(); ++i) {
+                    auto const type = static_cast<FEM::SoftBodyType>(i);
+                    bool const selected = type == _softBodyType;
+                    if (ImGui::Selectable(FEM::SoftBodyTypeName(type), selected)) {
+                        _softBodyType = type;
+                        if (type == FEM::SoftBodyType::TeddyBear) {
+                            _softGridX = std::max(_softGridX, 12);
+                            _softGridY = std::max(_softGridY, 12);
+                            _softGridZ = std::max(_softGridZ, 12);
+                        }
+                    }
+                    if (selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+
             {
                 int currentModel = static_cast<int>(_materialModel);
                 if (ImGui::Combo("Model", &currentModel, "StVK\0Neo-Hookean\0Corotated\0"))
@@ -170,15 +242,13 @@ namespace VCX::Labs::Coupling {
             ImGui::SliderInt("Soft Substeps", &_softSubsteps, 1, 200);
 
             ImGui::Spacing();
-            ImGui::SliderInt("Beam Res X", &_beamResX, 2, 16);
-            ImGui::SliderInt("Beam Res Y", &_beamResY, 2, 8);
-            ImGui::SliderInt("Beam Res Z", &_beamResZ, 2, 8);
-            ImGui::SliderFloat("Beam Origin X", &_beamOrigin.x, -0.5f, 0.5f, "%.2f");
-            ImGui::SliderFloat("Beam Origin Y", &_beamOrigin.y, -0.5f, 0.5f, "%.2f");
-            ImGui::SliderFloat("Beam Origin Z", &_beamOrigin.z, -0.5f, 0.5f, "%.2f");
-            ImGui::SliderFloat("Beam Size X", &_beamSize.x, 0.1f, 1.0f, "%.2f");
-            ImGui::SliderFloat("Beam Size Y", &_beamSize.y, 0.05f, 0.5f, "%.2f");
-            ImGui::SliderFloat("Beam Size Z", &_beamSize.z, 0.1f, 1.0f, "%.2f");
+            ImGui::SliderInt("Soft Grid X", &_softGridX, 2, 16);
+            ImGui::SliderInt("Soft Grid Y", &_softGridY, 2, 16);
+            ImGui::SliderInt("Soft Grid Z", &_softGridZ, 2, 16);
+            ImGui::SliderFloat("Soft Spacing", &_softSpacing, 0.02f, 0.1f, "%.3f");
+            ImGui::SliderFloat("Soft Center X", &_softCenter.x, -0.4f, 0.4f, "%.2f");
+            ImGui::SliderFloat("Soft Center Y", &_softCenter.y, -0.4f, 0.4f, "%.2f");
+            ImGui::SliderFloat("Soft Center Z", &_softCenter.z, -0.4f, 0.4f, "%.2f");
             ImGui::SliderFloat("Total Mass", &_totalMass, 0.1f, 5.0f, "%.2f");
 
             if (ImGui::Button("Apply Soft Reset"))
@@ -248,8 +318,10 @@ namespace VCX::Labs::Coupling {
             }
             float const avgSurfaceY = numColumns > 0 ? sumSurfaceY / numColumns : 0.0f;
 
-            float const totalVolume = _beamSize.x * _beamSize.y * _beamSize.z;
-            float const volPerVertex = totalVolume / _softMesh.NumVertices();
+            float totalVolume = 0.0f;
+            for (float volume : _softMesh.restVolume)
+                totalVolume += volume;
+            float const volPerVertex = _softMesh.NumVertices() > 0 ? totalVolume / _softMesh.NumVertices() : 0.0f;
             float const buoyancyScale = 0.5f;
 
             int const softSteps = std::max(_softSubsteps, 1);
@@ -324,8 +396,11 @@ namespace VCX::Labs::Coupling {
         Eigen::Vector3f currentCenter = 0.5f * (minPos + maxPos);
         Eigen::Vector3f const shift(center.x, center.y, center.z);
         Eigen::Vector3f const offset = shift - currentCenter;
-        for (int i = 0; i < _softMesh.NumVertices(); ++i)
+        for (int i = 0; i < _softMesh.NumVertices(); ++i) {
             _softMesh.positions[i] += offset;
+            if (i < static_cast<int>(_softMesh.restPositions.size()))
+                _softMesh.restPositions[i] += offset;
+        }
     }
 
     Common::CaseRenderResult CaseFEMxFLIP::OnRender(std::pair<std::uint32_t, std::uint32_t> const desiredSize) {

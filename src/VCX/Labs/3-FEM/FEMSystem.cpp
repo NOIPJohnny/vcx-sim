@@ -1,9 +1,7 @@
 #include "Integrator.h"
 #include "FEMSystem.h"
 
-#include <algorithm>
-#include <array>
-#include <map>
+#include <cmath>
 
 #include <glm/geometric.hpp>
 
@@ -78,61 +76,10 @@ namespace VCX::Labs::FEM {
     FEMSystem::~FEMSystem() = default;
 
     void FEMSystem::ResetSystem() {
-        positions.clear();
-        velocities.clear();
-        masses.clear();
-        fixed.clear();
-        forces.clear();
-        externalForces.clear();
-        tets.clear();
-        surfaceFaces.clear();
-
         SetupLameParameters();
+        BuildSoftBodyStructure(*this, softBodyType);
 
-        // create grid of particles
-        for(std::size_t i = 0; i <= wx; ++i)
-            for(std::size_t j = 0; j <= wy; ++j)
-                for(std::size_t k = 0; k <= wz; ++k) {
-                    AddParticle({i * delta, j * delta, k * delta});
-                }
-
-        // create tetrahedral elements
-        for (std::size_t i = 0; i < wx; i++)
-            for (std::size_t j = 0; j < wy; j++)
-                for (std::size_t k = 0; k < wz; k++) {
-                    AddTet(GetID(i, j, k),   
-                        GetID(i, j, k + 1), 
-                        GetID(i, j + 1, k + 1), 
-                        GetID(i + 1, j + 1, k + 1));
-                    AddTet(GetID(i, j, k),   
-                        GetID(i, j + 1, k), 
-                        GetID(i, j + 1, k + 1), 
-                        GetID(i + 1, j + 1, k + 1));
-                    AddTet(GetID(i, j, k),   
-                        GetID(i, j, k + 1), 
-                        GetID(i + 1, j, k + 1), 
-                        GetID(i + 1, j + 1, k + 1));  
-                    AddTet(GetID(i, j, k), 
-                        GetID(i + 1, j, k), 
-                        GetID(i + 1, j, k + 1), 
-                        GetID(i + 1, j + 1, k + 1));  
-                    AddTet(GetID(i, j, k),
-                        GetID(i, j + 1, k), 
-                        GetID(i + 1, j + 1, k), 
-                        GetID(i + 1, j + 1, k + 1));
-                    AddTet(GetID(i, j, k),   
-                        GetID(i + 1, j, k), 
-                        GetID(i + 1, j + 1, k), 
-                        GetID(i + 1, j + 1, k + 1));
-                }
-
-    BuildSurfaceFaces();
-            
-    for (std::size_t j = 0; j <= wy; j++)
-        for (std::size_t k = 0; k <= wz; k++)
-            fixed[GetID(0, j, k)] = true;
-
-    for (auto& tet : tets) {
+        for (auto& tet : tets) {
             glm::vec3 x0 = positions[tet.indices[0]];
             glm::vec3 x1 = positions[tet.indices[1]];
             glm::vec3 x2 = positions[tet.indices[2]];
@@ -160,47 +107,6 @@ namespace VCX::Labs::FEM {
     void FEMSystem::Update(float dt) {
         if (integrator)
             integrator->Step(*this, dt);
-    }
-
-    void FEMSystem::AddParticle(const glm::vec3& pos) {
-        positions.push_back(pos);
-        velocities.emplace_back(0.0f);
-        masses.push_back(0.0f); // assign mass later
-        fixed.push_back(false);
-        forces.emplace_back(0.0f);
-        externalForces.emplace_back(0.0f);
-    }
-
-    void FEMSystem::AddTet(int v0, int v1, int v2, int v3) {
-        tets.emplace_back(v0, v1, v2, v3);
-    }
-
-    void FEMSystem::BuildSurfaceFaces() {
-        surfaceFaces.clear();
-
-        std::map<std::array<int, 3>, std::array<int, 3>> boundaryFaces;
-        for (auto const & tet : tets) {
-            std::array<std::array<int, 3>, 4> const faces = {{
-                { tet.indices[0], tet.indices[2], tet.indices[1] },
-                { tet.indices[0], tet.indices[1], tet.indices[3] },
-                { tet.indices[0], tet.indices[3], tet.indices[2] },
-                { tet.indices[1], tet.indices[2], tet.indices[3] },
-            }};
-
-            for (auto const & face : faces) {
-                std::array<int, 3> key = face;
-                std::sort(key.begin(), key.end());
-                auto it = boundaryFaces.find(key);
-                if (it == boundaryFaces.end())
-                    boundaryFaces.emplace(key, face);
-                else
-                    boundaryFaces.erase(it);
-            }
-        }
-
-        surfaceFaces.reserve(boundaryFaces.size());
-        for (auto const & [_, face] : boundaryFaces)
-            surfaceFaces.push_back(face);
     }
 
     void FEMSystem::ComputeInternalForces() {
