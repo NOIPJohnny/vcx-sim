@@ -13,6 +13,7 @@
 #include "Labs/Common/OrbitCameraManager.h"
 #include "Labs/Scene/SceneObject.h"
 #include "FluidSimulator.h"
+#include "FluidSurface.h"
 #include "RigidBodySystem.h"
 #include "RigidFluidCoupler.h"
 
@@ -57,14 +58,17 @@ namespace VCX::Labs::Coupling {
         RigidBodyItem const* SphereBody() const;
         void StopSphereMotion();
         void DrawRigidSphere(glm::mat4 const& projection, glm::mat4 const& view);
+        void DrawFluidSurface(glm::mat4 const& projection, glm::mat4 const& view);
 
     private:
         Engine::GL::UniqueProgram _program;
         Engine::GL::UniqueProgram _lineProgram;
         Engine::GL::UniqueProgram _rigidProgram;
+        Engine::GL::UniqueProgram _surfaceProgram;
         Engine::GL::UniqueRenderFrame _frame;
         Engine::GL::UniqueIndexedRenderItem _boundaryItem;
         Engine::GL::UniqueIndexedRenderItem _rigidSphereItem;
+        Engine::GL::UniqueIndexedRenderItem _fluidSurfaceItem;
 
         Rendering::SceneObject _sceneObject;
         Common::OrbitCameraManager _cameraManager;
@@ -96,6 +100,11 @@ namespace VCX::Labs::Coupling {
         bool _enableRigidToFluid = true;
         float _pressureScale = 0.15f;
         bool _fixSphere = false;
+
+        bool _showFluidSurface = true;
+        bool _showFluidParticles = false;
+        glm::vec3 _fluidSurfaceColor = glm::vec3(0.16f, 0.52f, 0.95f);
+        float _fluidSurfaceAlpha = 0.62f;
 
         bool _enableObstacle = true;
         float _obstacleRadius = 0.08f;

@@ -2,6 +2,8 @@
 #include <cmath>
 #include <set>
 
+#include <glm/gtc/type_ptr.hpp>
+
 #include "Engine/app.h"
 #include "Labs/Common/ImGuiHelper.h"
 #include "Labs/3-FEM/FEMSystem.h"
@@ -35,6 +37,10 @@ namespace VCX::Labs::Coupling {
             Engine::GL::SharedShader("assets/shaders/lit_mesh.vert"),
             Engine::GL::SharedShader("assets/shaders/lit_mesh.frag"),
         })),
+        _fluidSurfaceProgram(Engine::GL::UniqueProgram({
+            Engine::GL::SharedShader("assets/shaders/lit_mesh.vert"),
+            Engine::GL::SharedShader("assets/shaders/fluid_surface.frag"),
+        })),
         _boundaryItem(
             Engine::GL::VertexLayout()
                 .Add<glm::vec3>("position", Engine::GL::DrawFrequency::Stream, 0),
@@ -46,6 +52,12 @@ namespace VCX::Labs::Coupling {
             Engine::GL::PrimitiveType::Lines
         ),
         _surfaceItem(
+            Engine::GL::VertexLayout()
+                .Add<glm::vec3>("position", Engine::GL::DrawFrequency::Stream, 0)
+                .Add<glm::vec3>("normal",   Engine::GL::DrawFrequency::Stream, 1),
+            Engine::GL::PrimitiveType::Triangles
+        ),
+        _fluidSurfaceItem(
             Engine::GL::VertexLayout()
                 .Add<glm::vec3>("position", Engine::GL::DrawFrequency::Stream, 0)
                 .Add<glm::vec3>("normal",   Engine::GL::DrawFrequency::Stream, 1),
@@ -256,6 +268,12 @@ namespace VCX::Labs::Coupling {
         }
 
         if (ImGui::CollapsingHeader("Appearance", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Show Fluid Surface", &_showFluidSurface);
+            ImGui::SameLine();
+            ImGui::Checkbox("Show Fluid Particles", &_showFluidParticles);
+            ImGui::ColorEdit3("Fluid Surface Color", glm::value_ptr(_fluidSurfaceColor));
+            ImGui::SliderFloat("Fluid Surface Alpha", &_fluidSurfaceAlpha, 0.15f, 1.0f, "%.2f");
+            ImGui::Separator();
             ImGui::Checkbox("Show Surface", &_showSurface);
             ImGui::SameLine();
             ImGui::Checkbox("Show Wireframe", &_showWireframe);
@@ -403,6 +421,46 @@ namespace VCX::Labs::Coupling {
         }
     }
 
+    void CaseFEMxFLIP::DrawFluidSurface(glm::mat4 const & projection, glm::mat4 const & view) {
+        if (! _showFluidSurface)
+            return;
+
+        FluidSurfaceMesh surface = BuildFluidSurface(_sim);
+        if (surface.indices.empty() ||
+            surface.positions.empty() ||
+            surface.positions.size() != surface.normals.size()) {
+            return;
+        }
+
+        _fluidSurfaceProgram.GetUniforms().SetByName("u_Projection", projection);
+        _fluidSurfaceProgram.GetUniforms().SetByName("u_View", view);
+        _fluidSurfaceProgram.GetUniforms().SetByName("u_ViewPosition", _sceneObject.Camera.Eye);
+        _fluidSurfaceProgram.GetUniforms().SetByName("u_Color", _fluidSurfaceColor);
+        _fluidSurfaceProgram.GetUniforms().SetByName("u_Alpha", _fluidSurfaceAlpha);
+        _fluidSurfaceProgram.GetUniforms().SetByName("u_LightDir", glm::normalize(glm::vec3(0.4f, 0.8f, 0.5f)));
+        _fluidSurfaceProgram.GetUniforms().SetByName("u_LightColor", glm::vec3(1.35f));
+        _fluidSurfaceProgram.GetUniforms().SetByName("u_AmbientColor", glm::vec3(0.28f));
+        _fluidSurfaceProgram.GetUniforms().SetByName("u_Shininess", 90.0f);
+
+        _fluidSurfaceItem.UpdateVertexBuffer("position", Engine::make_span_bytes<glm::vec3>(surface.positions));
+        _fluidSurfaceItem.UpdateVertexBuffer("normal", Engine::make_span_bytes<glm::vec3>(surface.normals));
+        _fluidSurfaceItem.UpdateElementBuffer(surface.indices);
+
+        GLboolean depthMask = GL_TRUE;
+        glGetBooleanv(GL_DEPTH_WRITEMASK, &depthMask);
+        bool const blendWasEnabled = glIsEnabled(GL_BLEND) == GL_TRUE;
+        bool const cullWasEnabled = glIsEnabled(GL_CULL_FACE) == GL_TRUE;
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+        glDisable(GL_CULL_FACE);
+        _fluidSurfaceItem.Draw({ _fluidSurfaceProgram.Use() });
+        glDepthMask(depthMask);
+        if (! blendWasEnabled) glDisable(GL_BLEND);
+        if (cullWasEnabled) glEnable(GL_CULL_FACE);
+    }
+
     Common::CaseRenderResult CaseFEMxFLIP::OnRender(std::pair<std::uint32_t, std::uint32_t> const desiredSize) {
         float dt = _useFixedDt ? _fixedDt : Engine::GetDeltaTime() * _timeScale;
         dt = std::clamp(dt, 1.0f / 300.0f, 1.0f / 80.0f);
@@ -445,8 +503,10 @@ namespace VCX::Labs::Coupling {
         glLineWidth(1.0f);
 
         // fluid particles
-        Rendering::ModelObject fluidParticles(_fluidSphere, _sim.m_particlePos, _sim.m_particleColor);
-        fluidParticles.Mesh.Draw({ _program.Use() }, _fluidSphere.Mesh.Indices.size(), 0, _sim.m_particlePos.size());
+        if (_showFluidParticles) {
+            Rendering::ModelObject fluidParticles(_fluidSphere, _sim.m_particlePos, _sim.m_particleColor);
+            fluidParticles.Mesh.Draw({ _program.Use() }, _fluidSphere.Mesh.Indices.size(), 0, _sim.m_particlePos.size());
+        }
 
         // upload deformed positions
         int const nv = _softMesh.NumVertices();
@@ -516,6 +576,8 @@ namespace VCX::Labs::Coupling {
             Rendering::ModelObject softParticles(_softSphere, softPositions, _softColors);
             softParticles.Mesh.Draw({ _program.Use() }, _softSphere.Mesh.Indices.size(), 0, nv);
         }
+
+        DrawFluidSurface(projMat, viewMat);
 
         glEnable(GL_CULL_FACE);
         glDisable(GL_DEPTH_TEST);

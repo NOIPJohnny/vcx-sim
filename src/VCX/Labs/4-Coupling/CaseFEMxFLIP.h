@@ -13,6 +13,7 @@
 #include "Labs/Common/OrbitCameraManager.h"
 #include "Labs/Scene/SceneObject.h"
 #include "FluidSimulator.h"
+#include "FluidSurface.h"
 #include "FEMFluidCoupler.h"
 #include "TetMesh.h"
 #include "FEMIntegrator.h"
@@ -36,16 +37,19 @@ namespace VCX::Labs::Coupling {
         void SolvePressure(float dt);
         void ConstrainSoftBody();
         void CenterSoftBody(glm::vec3 const & center);
+        void DrawFluidSurface(glm::mat4 const & projection, glm::mat4 const & view);
 
     private:
         // fluid rendering
         Engine::GL::UniqueProgram _program;
         Engine::GL::UniqueProgram _lineProgram;
         Engine::GL::UniqueProgram _litProgram;
+        Engine::GL::UniqueProgram _fluidSurfaceProgram;
         Engine::GL::UniqueRenderFrame _frame;
         Engine::GL::UniqueIndexedRenderItem _boundaryItem;
         Engine::GL::UniqueIndexedRenderItem _softEdgeItem;
         Engine::GL::UniqueIndexedRenderItem _surfaceItem;
+        Engine::GL::UniqueIndexedRenderItem _fluidSurfaceItem;
 
         Rendering::SceneObject _sceneObject;
         Common::OrbitCameraManager _cameraManager;
@@ -93,6 +97,10 @@ namespace VCX::Labs::Coupling {
         bool _showWireframe = true;
         bool _showSurface = true;
         bool _showVertices = true;
+        bool _showFluidSurface = true;
+        bool _showFluidParticles = false;
+        glm::vec3 _fluidSurfaceColor = glm::vec3(0.16f, 0.52f, 0.95f);
+        float _fluidSurfaceAlpha = 0.62f;
         bool _useLighting = true;
         float _lightIntensity = 1.0f;
         float _ambientScale = 0.30f;
